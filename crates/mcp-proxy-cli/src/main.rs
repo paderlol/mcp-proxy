@@ -148,10 +148,7 @@ fn run_server(server_id: &str) -> Result<(), String> {
     }
 }
 
-fn spawn_local(
-    config: &McpServerConfig,
-    env_vars: HashMap<String, String>,
-) -> Result<(), String> {
+fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> Result<(), String> {
     // Inherit stdio: AI client's stdin/stdout IS our stdin/stdout,
     // and the child inherits them directly. MCP protocol traffic flows through
     // without any manual piping on our side.
@@ -181,9 +178,7 @@ fn list_servers() -> Result<(), String> {
 
     if servers.is_empty() {
         println!("No MCP servers configured.");
-        println!(
-            "Add servers via the MCP Proxy desktop app, then they'll appear here."
-        );
+        println!("Add servers via the MCP Proxy desktop app, then they'll appear here.");
         return Ok(());
     }
 

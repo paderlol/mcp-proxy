@@ -83,17 +83,13 @@ fn stdio_is_transparently_piped_to_child() {
 
     let status = child.wait().expect("wait on mcp-proxy");
 
-    assert!(
-        status.success(),
-        "mcp-proxy exited non-zero; stderr: {}",
-        {
-            let mut s = String::new();
-            if let Some(mut err) = child.stderr.take() {
-                err.read_to_string(&mut s).ok();
-            }
-            s
+    assert!(status.success(), "mcp-proxy exited non-zero; stderr: {}", {
+        let mut s = String::new();
+        if let Some(mut err) = child.stderr.take() {
+            err.read_to_string(&mut s).ok();
         }
-    );
+        s
+    });
     assert_eq!(
         stdout.trim(),
         initialize_request,

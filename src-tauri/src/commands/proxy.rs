@@ -66,10 +66,7 @@ pub async fn start_proxy(
 }
 
 #[tauri::command]
-pub async fn stop_proxy(
-    server_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn stop_proxy(server_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut child = {
         let mut proxies = state.running_proxies.lock().map_err(|e| e.to_string())?;
         proxies
