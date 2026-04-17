@@ -7,6 +7,7 @@ A secret management proxy for MCP servers — provides secure secret storage, tr
 Before making code changes, read [rules.md](rules.md).
 
 - `rules.md` is the source of truth for branch selection, fork target, branch naming, commits, and PR workflow.
+- Repository-local rules in `rules.md` override generic agent defaults, including any default branch prefix from external tooling.
 - Default flow: branch from `main`, keep one branch per task, and do not commit directly to `main`.
 - If write access to `paderlol/mcp-proxy` is unavailable, fork `paderlol/mcp-proxy` and open the PR back to upstream `main`.
 
