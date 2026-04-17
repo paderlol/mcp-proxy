@@ -81,3 +81,42 @@ jobs:
 
       - name: Vitest
         run: npm test
+
+  # ---------------------------------------------------------------------
+  # Frontend E2E — Playwright against the Vite dev server with Tauri
+  # invoke mocked. Runs on Chromium only; we only need one engine since the
+  # app's production runtime is a single WebView and the mock is trivial.
+  # ---------------------------------------------------------------------
+  frontend-e2e:
+    name: Frontend E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        run: npm run test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

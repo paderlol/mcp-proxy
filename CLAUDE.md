@@ -54,6 +54,11 @@ cargo test -p mcp-proxy          # 6 config + 18 client_write = 24 tests
 npm test
 npm run test:watch               # watch mode
 
+# Test — Frontend E2E (Playwright, mocked Tauri invoke)
+npx playwright install --with-deps chromium   # one-time
+npm run test:e2e                 # headless run
+npm run test:e2e:ui              # interactive debugger
+
 # Data-dir override for tests & isolated profiles
 MCP_PROXY_DATA_DIR=/tmp/mcp-proxy-profile ./target/release/mcp-proxy list
 ```

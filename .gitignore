@@ -37,3 +37,8 @@ Thumbs.db
 # ---------- Local dev data ----------
 # MCP Proxy CLI build contexts / cached docker images metadata
 /docker-build/
+
+# ---------- Playwright ----------
+/test-results/
+/playwright-report/
+/playwright/.cache/
