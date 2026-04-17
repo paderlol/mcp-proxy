@@ -15,6 +15,8 @@ pub struct McpServerConfig {
     pub trusted: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_launched_at: Option<DateTime<Utc>>,
 }
 
 impl McpServerConfig {
@@ -32,6 +34,7 @@ impl McpServerConfig {
             trusted: false,
             created_at: now,
             updated_at: now,
+            first_launched_at: None,
         }
     }
 }
@@ -186,5 +189,46 @@ mod tests {
         assert!(config.env_mappings.is_empty());
         assert!(matches!(config.run_mode, RunMode::Local));
         assert!(matches!(config.transport, Transport::Stdio));
+        assert!(config.first_launched_at.is_none());
+    }
+
+    /// Old `servers.json` files written before `first_launched_at` existed
+    /// must deserialize cleanly with the field absent.
+    #[test]
+    fn mcp_server_config_round_trips_without_first_launched_at() {
+        let legacy = r#"{
+            "id": "srv-1",
+            "name": "legacy",
+            "command": "npx",
+            "args": [],
+            "transport": {"type": "Stdio"},
+            "env_mappings": [],
+            "run_mode": {"type": "Local"},
+            "enabled": true,
+            "trusted": false,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let parsed: McpServerConfig = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.first_launched_at.is_none());
+        // Re-serializing must not emit the field (skip_serializing_if).
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(!json.contains("first_launched_at"));
+    }
+
+    #[test]
+    fn mcp_server_config_round_trips_with_first_launched_at() {
+        let mut config = McpServerConfig::new(
+            "t".to_string(),
+            "npx".to_string(),
+            vec![],
+            Transport::Stdio,
+        );
+        let ts: DateTime<Utc> = "2026-04-17T10:00:00Z".parse().unwrap();
+        config.first_launched_at = Some(ts);
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("first_launched_at"));
+        let back: McpServerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.first_launched_at, Some(ts));
     }
 }

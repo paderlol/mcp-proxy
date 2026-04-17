@@ -618,9 +618,10 @@ export function ServerConfig() {
                 This server is not verified
               </p>
               <p className="text-xs text-text-secondary mt-1">
-                If an AI client launches this server, it will run with access to
-                the secrets mapped below. Only continue if you trust the command
-                and its package source.
+                AI clients will refuse to launch this server until you mark it
+                as Trusted. Only continue saving as Untrusted if you also plan
+                to review the command and its package source before flipping
+                the trust level.
               </p>
             </div>
           </div>
