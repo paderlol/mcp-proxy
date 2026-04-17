@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "src-tauri",
+    "crates/mcp-proxy-common",
+    "crates/mcp-proxy-agent",
+    "crates/mcp-proxy-cli",
+]
+resolver = "2"

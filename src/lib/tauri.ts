@@ -1,0 +1,66 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  ClientConfigInfo,
+  EnvMapping,
+  McpServerConfig,
+  ProxyStatus,
+  SecretEntry,
+  SecretSource,
+  WriteConfigResult,
+} from "./types";
+
+// Secrets
+export const listSecrets = () => invoke<SecretEntry[]>("list_secrets");
+export const getSecret = (id: string, source: SecretSource) =>
+  invoke<string>("get_secret", { id, source });
+/**
+ * Upsert a secret. Pass `value = null` to update metadata (label/source)
+ * without touching the stored secret value — useful when editing a pre-existing
+ * entry and the user leaves the "value" field blank.
+ */
+export const setSecret = (
+  id: string,
+  label: string,
+  value: string | null,
+  source: SecretSource,
+) => invoke<void>("set_secret", { id, label, value, source });
+export const deleteSecret = (id: string, source: SecretSource) =>
+  invoke<void>("delete_secret", { id, source });
+
+// Servers
+export const listServers = () => invoke<McpServerConfig[]>("list_servers");
+export const getServer = (id: string) =>
+  invoke<McpServerConfig>("get_server", { id });
+export const addServer = (params: {
+  name: string;
+  command: string;
+  args: string[];
+  transportType: string;
+  ssePort?: number;
+  ssePath?: string;
+  runModeType?: string;
+  dockerImage?: string;
+  envMappings?: EnvMapping[];
+}) => invoke<McpServerConfig>("add_server", params);
+export const updateServer = (server: McpServerConfig) =>
+  invoke<McpServerConfig>("update_server", { server });
+export const deleteServer = (id: string) =>
+  invoke<void>("delete_server", { id });
+
+// Proxy
+export const startProxy = (serverId: string) =>
+  invoke<ProxyStatus>("start_proxy", { serverId });
+export const stopProxy = (serverId: string) =>
+  invoke<void>("stop_proxy", { serverId });
+export const getProxyStatus = (serverId: string) =>
+  invoke<ProxyStatus>("get_proxy_status", { serverId });
+
+// Config generation
+export const generateConfig = (client: string) =>
+  invoke<string>("generate_config", { client });
+
+// Client config write (one-click deploy)
+export const getClientConfigInfo = (client: string) =>
+  invoke<ClientConfigInfo>("get_client_config_info", { client });
+export const writeClientConfig = (client: string) =>
+  invoke<WriteConfigResult>("write_client_config", { client });
