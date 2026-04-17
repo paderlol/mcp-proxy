@@ -53,3 +53,8 @@ pub fn servers_path() -> PathBuf {
 pub fn secrets_meta_path() -> PathBuf {
     app_data_dir().join("secrets_meta.json")
 }
+
+/// Path to the audit log file (JSON Lines).
+pub fn audit_log_path() -> PathBuf {
+    app_data_dir().join("audit.log")
+}

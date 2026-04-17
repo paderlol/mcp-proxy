@@ -37,6 +37,7 @@ pub fn run() {
             commands::config::generate_config,
             commands::client_write::get_client_config_info,
             commands::client_write::write_client_config,
+            commands::logs::list_audit_logs,
             commands::vault::vault_status,
             commands::vault::unlock_vault,
             commands::vault::lock_vault,

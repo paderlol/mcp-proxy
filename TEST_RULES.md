@@ -53,13 +53,13 @@ Playwright driving Chromium against the Vite dev build, with `window.__TAURI_INT
 
 ### Still NOT tested (gaps)
 
-- **Tauri commands** — `add_server`, `set_secret`, `delete_secret`, `start_proxy` (desktop mode) — not yet covered
+- **Tauri commands** — `add_server`, `set_secret`, `delete_secret`, `list_audit_logs` and related desktop command flows — not yet directly covered at the command layer
 - **React component tests** — pages + UI components; only pure utilities (`filterEntries`) are tested so far
-- **Cross-platform** — only macOS runs the test suite; Linux/Windows `Local` backend is a stub
+- **Cross-platform** — only macOS runs the automated test suite end-to-end; Linux/Windows still need broader validation for the encrypted local-vault path
 - **Proxy lifecycle** — long-running proxy with real MCP traffic; covered by manual checklist only
 - **Concurrent proxies** — multiple servers started simultaneously
-- **Docker sandbox** — not implemented in CLI
-- **EncryptedFile backend** — stub on non-macOS platforms
+- **Docker sandbox** — implemented in the CLI path, but still needs more integration coverage beyond unit tests and config-path validation
+- **EncryptedFile backend** — implemented, but cross-platform behavior is not yet broadly exercised in CI
 
 ---
 

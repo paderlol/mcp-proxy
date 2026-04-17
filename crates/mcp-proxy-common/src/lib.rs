@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod local_backend;
 pub mod models;
 pub mod secret_resolver;

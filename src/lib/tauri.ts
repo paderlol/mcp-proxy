@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AuditLogEntry,
   ClientConfigInfo,
   EnvMapping,
   McpServerConfig,
@@ -41,6 +42,7 @@ export const addServer = (params: {
   runModeType?: string;
   dockerImage?: string;
   envMappings?: EnvMapping[];
+  trusted?: boolean;
 }) => invoke<McpServerConfig>("add_server", params);
 export const updateServer = (server: McpServerConfig) =>
   invoke<McpServerConfig>("update_server", { server });
@@ -56,6 +58,10 @@ export const getClientConfigInfo = (client: string) =>
   invoke<ClientConfigInfo>("get_client_config_info", { client });
 export const writeClientConfig = (client: string) =>
   invoke<WriteConfigResult>("write_client_config", { client });
+
+// Audit logs
+export const listAuditLogs = (limit = 50) =>
+  invoke<AuditLogEntry[]>("list_audit_logs", { limit });
 
 // Vault / Local-secret lifecycle
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");
