@@ -1,5 +1,13 @@
 # MCP Proxy
 
+[![CI](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml)
+[![License: PolyForm NC 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#)
+[![Tests](https://img.shields.io/badge/tests-78%20Rust%20%7C%2014%20Vitest%20%7C%2010%20Playwright-success)](#testing)
+
 Secret management desktop app and CLI for MCP (Model Context Protocol) servers.
 
 MCP Proxy lets you store API keys once, map them to MCP servers, and generate client configs without writing secrets into Claude Desktop, Codex, Cursor, VS Code, or Windsurf config files.
@@ -227,4 +235,8 @@ The core desktop app, CLI runtime path, config generation, and automated test su
 
 ## License
 
-TBD.
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+You may use, modify, and redistribute this software **for any noncommercial purpose** — personal use, research, education, hobby projects, and use by nonprofit / public organizations are all permitted.
+
+**Commercial use is not permitted under this license.** If you would like to use MCP Proxy for commercial purposes, please contact the author to discuss a separate commercial license.

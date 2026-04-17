@@ -1,5 +1,13 @@
 # MCP Proxy
 
+[![CI](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml)
+[![License: PolyForm NC 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#)
+[![Tests](https://img.shields.io/badge/tests-78%20Rust%20%7C%2014%20Vitest%20%7C%2010%20Playwright-success)](#测试)
+
 MCP (Model Context Protocol) Server 的密钥管理桌面应用和 CLI。
 
 MCP Proxy 的目标是让你只保存一次 API Key 或 Token，在桌面应用里完成服务配置和密钥映射，然后生成 AI 客户端配置文件，而不用把密钥明文写进 Claude Desktop、Codex、Cursor、VS Code 或 Windsurf 的配置中。
@@ -227,4 +235,8 @@ npm run test:e2e
 
 ## License
 
-TBD.
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。
+
+你可以**出于任何非商业目的**自由使用、修改和再分发本软件——包括个人使用、研究、教育、业余项目，以及非营利组织 / 公共机构的使用。
+
+**本许可不允许任何形式的商业使用。** 如果你需要将 MCP Proxy 用于商业用途，请联系作者另行获取商业授权。
