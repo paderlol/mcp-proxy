@@ -21,8 +21,12 @@ test.describe("Servers", () => {
 
     await page.getByRole("button", { name: /save server/i }).click();
 
-    // After save → modal closes, server appears as a card.
-    await expect(page.getByText("GitHub", { exact: true })).toBeVisible();
+    // After save → modal closes, server appears as a card. "GitHub" can also
+    // appear in the registry browser / hints elsewhere, so scope to the first
+    // matching card heading to keep the assertion unambiguous.
+    await expect(
+      page.getByText("GitHub", { exact: true }).first(),
+    ).toBeVisible();
     await expect(
       page.getByText("No MCP servers configured yet"),
     ).toBeHidden();
