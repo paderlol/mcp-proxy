@@ -1,0 +1,39 @@
+# ---------- Rust ----------
+/target/
+**/*.rs.bk
+
+# ---------- Node / frontend ----------
+/node_modules/
+/dist/
+/.vite/
+*.tsbuildinfo
+
+# ---------- Tauri ----------
+# Generated / rebuilt per machine
+/src-tauri/target/
+/src-tauri/gen/
+
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/mcp.json
+
+# ---------- Claude Code ----------
+# Keep shared project instructions (CLAUDE.md), ignore user-local
+.claude/settings.local.json
+.claude/launch.json
+.claude/projects/
+
+# ---------- Secrets (safety net) ----------
+.env
+.env.*
+*.pem
+*.p12
+*.key
+
+# ---------- Local dev data ----------
+# MCP Proxy CLI build contexts / cached docker images metadata
+/docker-build/

@@ -1,0 +1,30 @@
+[package]
+name = "mcp-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mcp_proxy_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+zeroize = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "5"
+mcp-proxy-common = { path = "../crates/mcp-proxy-common" }
+
+[dev-dependencies]
+tempfile = "3"
