@@ -35,12 +35,6 @@ export type SecretSource =
   | { type: "Local" }
   | { type: "OnePassword"; reference: string };
 
-export interface ProxyStatus {
-  server_id: string;
-  running: boolean;
-  pid: number | null;
-}
-
 export interface ClientConfigInfo {
   client: string;
   supported: boolean;
