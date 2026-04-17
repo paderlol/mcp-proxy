@@ -3,13 +3,41 @@ import { MainContent } from "../components/layout/MainContent";
 import { Card } from "../components/ui/Card";
 import { PillButton } from "../components/ui/PillButton";
 import { Badge } from "../components/ui/Badge";
+import { Modal } from "../components/ui/Modal";
 import { SecretInput } from "../components/ui/SecretInput";
-import { Lock, Unlock, AlertTriangle } from "lucide-react";
+import {
+  Lock,
+  Unlock,
+  AlertTriangle,
+  KeyRound,
+  Trash2,
+  Clock,
+} from "lucide-react";
 import { useVault } from "../hooks/useVault";
+import {
+  IDLE_TIMEOUT_CHOICES,
+  useVaultIdleTimeout,
+} from "../hooks/useVaultIdleTimeout";
 
 export function Settings() {
-  const { status, busy, error, refresh, unlock, lock } = useVault();
+  const { status, busy, error, refresh, unlock, lock, changePassword, reset } =
+    useVault();
+  const [idleTimeoutMs, setIdleTimeoutMs] = useVaultIdleTimeout();
+
+  // unlock / create
   const [password, setPassword] = useState("");
+
+  // change password
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [newPw1, setNewPw1] = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [changePwBusy, setChangePwBusy] = useState(false);
+  const [changePwError, setChangePwError] = useState<string | null>(null);
+  const [changePwSuccess, setChangePwSuccess] = useState(false);
+
+  // reset confirmation
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
 
   useEffect(() => {
     refresh();
@@ -28,9 +56,53 @@ export function Settings() {
       await unlock(password);
       setPassword("");
     } catch {
-      // error is surfaced via `error` state
+      /* error is surfaced via `error` state */
     }
   };
+
+  const closeChangePw = () => {
+    setShowChangePw(false);
+    setNewPw1("");
+    setNewPw2("");
+    setChangePwError(null);
+    setChangePwSuccess(false);
+  };
+
+  const submitChangePw = async () => {
+    setChangePwError(null);
+    if (newPw1.length < 8) {
+      setChangePwError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPw1 !== newPw2) {
+      setChangePwError("The two new-password fields don't match.");
+      return;
+    }
+    setChangePwBusy(true);
+    try {
+      await changePassword(newPw1);
+      setChangePwSuccess(true);
+      setNewPw1("");
+      setNewPw2("");
+    } catch (e) {
+      setChangePwError(String(e));
+    } finally {
+      setChangePwBusy(false);
+    }
+  };
+
+  const submitReset = async () => {
+    try {
+      await reset();
+      setShowResetConfirm(false);
+      setResetConfirmText("");
+    } catch {
+      /* surfaced via error state */
+    }
+  };
+
+  const inputClass =
+    "w-full bg-bg-elevated text-text-primary rounded-[500px] px-4 py-2.5 text-sm outline-none border border-transparent focus:border-border-default shadow-[rgb(18,18,18)_0px_1px_0px,rgb(124,124,124)_0px_0px_0px_1px_inset] placeholder:text-text-secondary/50";
 
   return (
     <MainContent
@@ -58,9 +130,7 @@ export function Settings() {
           <div className="flex items-center justify-between py-2">
             <div>
               <p className="text-sm text-text-primary">Local Storage</p>
-              <p className="text-xs text-text-secondary">
-                {localDescription}
-              </p>
+              <p className="text-xs text-text-secondary">{localDescription}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-secondary">
@@ -95,19 +165,83 @@ export function Settings() {
             </p>
 
             {status?.unlocked ? (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-text-primary flex items-center gap-2">
-                  <Unlock size={14} className="text-brand" />
-                  Vault is unlocked
-                </p>
-                <PillButton
-                  variant="outlined"
-                  onClick={() => lock()}
-                  disabled={busy}
-                >
-                  <Lock size={12} className="mr-1" />
-                  Lock
-                </PillButton>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-text-primary flex items-center gap-2">
+                    <Unlock size={14} className="text-brand" />
+                    Vault is unlocked
+                  </p>
+                  <PillButton
+                    variant="outlined"
+                    onClick={() => lock()}
+                    disabled={busy}
+                  >
+                    <Lock size={12} className="mr-1" />
+                    Lock
+                  </PillButton>
+                </div>
+
+                <div className="border-t border-border-default/30 pt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-text-primary flex items-center gap-2">
+                      <Clock size={14} className="text-info" />
+                      Auto-lock after idle
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Automatically locks the vault after this much user inactivity.
+                    </p>
+                  </div>
+                  <select
+                    value={String(idleTimeoutMs)}
+                    onChange={(e) => setIdleTimeoutMs(Number(e.target.value))}
+                    className="bg-bg-elevated text-text-primary rounded-[500px] px-3 py-2 text-sm outline-none border border-transparent focus:border-border-default shadow-[rgb(18,18,18)_0px_1px_0px,rgb(124,124,124)_0px_0px_0px_1px_inset] cursor-pointer"
+                  >
+                    {IDLE_TIMEOUT_CHOICES.map((c) => (
+                      <option key={c.ms} value={String(c.ms)}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="border-t border-border-default/30 pt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-text-primary flex items-center gap-2">
+                      <KeyRound size={14} className="text-warning" />
+                      Change master password
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Re-encrypts the vault. All existing secrets are preserved.
+                    </p>
+                  </div>
+                  <PillButton
+                    variant="outlined"
+                    onClick={() => setShowChangePw(true)}
+                    disabled={busy}
+                  >
+                    Change
+                  </PillButton>
+                </div>
+
+                <div className="border-t border-border-default/30 pt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-text-primary flex items-center gap-2">
+                      <Trash2 size={14} className="text-negative" />
+                      Reset vault
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Deletes the vault file and all Local secrets. Irreversible.
+                    </p>
+                  </div>
+                  <PillButton
+                    variant="outlined"
+                    onClick={() => setShowResetConfirm(true)}
+                    className="!text-negative hover:!border-negative"
+                    disabled={busy}
+                  >
+                    Reset…
+                  </PillButton>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -130,7 +264,17 @@ export function Settings() {
                     {error}
                   </p>
                 )}
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  {status?.exists && (
+                    <PillButton
+                      variant="outlined"
+                      onClick={() => setShowResetConfirm(true)}
+                      className="!text-negative hover:!border-negative"
+                      disabled={busy}
+                    >
+                      Reset…
+                    </PillButton>
+                  )}
                   <PillButton
                     variant="brand"
                     onClick={handleSubmitPassword}
@@ -166,6 +310,122 @@ export function Settings() {
           </div>
         </Card>
       </div>
+
+      {/* Change password modal */}
+      <Modal
+        open={showChangePw}
+        onClose={closeChangePw}
+        title="Change master password"
+      >
+        <div className="flex flex-col gap-3">
+          {changePwSuccess ? (
+            <>
+              <p className="text-sm text-text-primary">
+                Vault re-encrypted with the new password.
+              </p>
+              <p className="text-xs text-text-secondary">
+                Remember to update{" "}
+                <code className="text-text-bright">MCP_PROXY_MASTER_PASSWORD</code>{" "}
+                in the shell that launches your AI client, or future{" "}
+                <code className="text-text-bright">mcp-proxy run</code>{" "}
+                invocations will fail to unlock.
+              </p>
+              <div className="flex justify-end">
+                <PillButton variant="brand" onClick={closeChangePw}>
+                  Done
+                </PillButton>
+              </div>
+            </>
+          ) : (
+            <>
+              <SecretInput
+                label="New master password"
+                value={newPw1}
+                onChange={(e) => setNewPw1(e.target.value)}
+              />
+              <SecretInput
+                label="Confirm new password"
+                value={newPw2}
+                onChange={(e) => setNewPw2(e.target.value)}
+              />
+              {changePwError && (
+                <p className="text-xs text-negative flex items-center gap-1">
+                  <AlertTriangle size={12} />
+                  {changePwError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 mt-2">
+                <PillButton variant="outlined" onClick={closeChangePw}>
+                  Cancel
+                </PillButton>
+                <PillButton
+                  variant="brand"
+                  onClick={submitChangePw}
+                  disabled={changePwBusy || !newPw1}
+                >
+                  {changePwBusy ? "Working..." : "Change Password"}
+                </PillButton>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Reset confirmation modal */}
+      <Modal
+        open={showResetConfirm}
+        onClose={() => {
+          setShowResetConfirm(false);
+          setResetConfirmText("");
+        }}
+        title="Reset vault?"
+      >
+        <div className="flex flex-col gap-3">
+          <div className="rounded-lg border border-negative/30 bg-bg-elevated p-3 flex items-start gap-2">
+            <AlertTriangle
+              size={14}
+              className="text-negative flex-shrink-0 mt-0.5"
+            />
+            <p className="text-xs text-text-secondary leading-relaxed">
+              This deletes <code className="text-text-bright">vault.bin</code>{" "}
+              and every secret stored inside it. Secret metadata entries will
+              still show in the list but will fail to resolve until you
+              re-create them. There is no undo.
+            </p>
+          </div>
+          <label className="text-xs text-text-secondary">
+            Type{" "}
+            <code className="text-text-bright font-bold">RESET</code> to confirm:
+          </label>
+          <input
+            type="text"
+            value={resetConfirmText}
+            onChange={(e) => setResetConfirmText(e.target.value)}
+            placeholder="RESET"
+            className={`${inputClass} font-mono`}
+          />
+          <div className="flex justify-end gap-2 mt-2">
+            <PillButton
+              variant="outlined"
+              onClick={() => {
+                setShowResetConfirm(false);
+                setResetConfirmText("");
+              }}
+            >
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="brand"
+              onClick={submitReset}
+              disabled={resetConfirmText !== "RESET" || busy}
+              className="!bg-negative !text-text-primary"
+            >
+              <Trash2 size={12} className="mr-1" />
+              Reset Vault
+            </PillButton>
+          </div>
+        </div>
+      </Modal>
     </MainContent>
   );
 }

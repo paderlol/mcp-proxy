@@ -13,6 +13,10 @@ interface VaultStore {
   unlock: (password: string) => Promise<void>;
   /** Zero the in-memory derived key. */
   lock: () => Promise<void>;
+  /** Re-encrypt the vault with a new master password (requires unlocked). */
+  changePassword: (newPassword: string) => Promise<void>;
+  /** Delete the vault file entirely. All Local secrets are lost. */
+  reset: () => Promise<void>;
 }
 
 export const useVault = create<VaultStore>((set, get) => ({
@@ -47,6 +51,32 @@ export const useVault = create<VaultStore>((set, get) => ({
     try {
       await api.lockVault();
       await get().refresh();
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  changePassword: async (newPassword) => {
+    set({ busy: true, error: null });
+    try {
+      await api.changeVaultPassword(newPassword);
+      await get().refresh();
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  reset: async () => {
+    set({ busy: true, error: null });
+    try {
+      await api.resetVault();
+      await get().refresh();
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
     } finally {
       set({ busy: false });
     }

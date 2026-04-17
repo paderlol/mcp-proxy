@@ -210,6 +210,39 @@ impl Vault {
         self.write_contents(&contents)
     }
 
+    /// Re-encrypt the vault with a new master password. Preserves all
+    /// existing entries; generates a fresh salt (so the old password's
+    /// derived key can never decrypt the new file, even given the plaintext).
+    ///
+    /// Mutates self in place: after success, this `Vault` handle can
+    /// continue serving reads/writes using the new key.
+    pub fn change_password(&mut self, new_password: &str) -> Result<(), VaultError> {
+        // Read plaintext with the current key first. If this fails we abort —
+        // never write a new file we can't round-trip.
+        let contents = self.read_contents()?;
+
+        // Fresh salt + derived key so the old key becomes useless.
+        let mut new_salt = [0u8; SALT_LEN];
+        rand::thread_rng().fill_bytes(&mut new_salt);
+        let new_key = derive_key(new_password, &new_salt)?;
+
+        // Temporarily swap in the new salt/key and write, so `write_contents`
+        // uses them. If the write succeeds, the new state is durable; if it
+        // fails, restore the old values so the handle stays consistent with
+        // whatever is on disk.
+        let old_salt = self.salt;
+        let old_key = std::mem::replace(&mut self.derived_key, new_key);
+        self.salt = new_salt;
+
+        if let Err(e) = self.write_contents(&contents) {
+            // Roll back so this handle still matches the file on disk.
+            self.salt = old_salt;
+            self.derived_key = old_key;
+            return Err(e);
+        }
+        Ok(())
+    }
+
     // --- internal ----------------------------------------------------------
 
     fn read_contents(&self) -> Result<VaultContents, VaultError> {
@@ -508,5 +541,46 @@ mod tests {
         assert!(!Vault::exists(&path));
         Vault::create(path.clone(), "pw").unwrap();
         assert!(Vault::exists(&path));
+    }
+
+    // --- change_password ----------------------------------------------------
+
+    #[test]
+    fn change_password_preserves_entries() {
+        let tmp = TempDir::new().unwrap();
+        let path = vault_path(&tmp);
+        let mut v = Vault::create(path.clone(), "old").unwrap();
+        v.set("k1", "v1").unwrap();
+        v.set("k2", "v2").unwrap();
+
+        v.change_password("new").unwrap();
+
+        // After rotation, the in-memory handle still works.
+        assert_eq!(&*v.get("k1").unwrap().unwrap(), "v1");
+        assert_eq!(&*v.get("k2").unwrap().unwrap(), "v2");
+
+        // Reopening with the new password works.
+        let v2 = Vault::open(path.clone(), "new").unwrap();
+        assert_eq!(&*v2.get("k1").unwrap().unwrap(), "v1");
+
+        // Reopening with the old password fails.
+        let err = Vault::open(path, "old").unwrap_err();
+        assert!(matches!(err, VaultError::WrongPasswordOrCorrupted));
+    }
+
+    #[test]
+    fn change_password_rotates_salt() {
+        let tmp = TempDir::new().unwrap();
+        let path = vault_path(&tmp);
+        let mut v = Vault::create(path.clone(), "pw").unwrap();
+
+        let salt_before = fs::read(&path).unwrap()[5..5 + SALT_LEN].to_vec();
+        v.change_password("pw2").unwrap();
+        let salt_after = fs::read(&path).unwrap()[5..5 + SALT_LEN].to_vec();
+
+        assert_ne!(
+            salt_before, salt_after,
+            "change_password must rotate the salt so the old key is useless"
+        );
     }
 }
