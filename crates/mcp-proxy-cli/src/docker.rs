@@ -28,6 +28,12 @@ use std::process::{Command, Stdio};
 const AGENT_CARGO_TOML: &str = include_str!("../../mcp-proxy-agent/Cargo.toml");
 const AGENT_MAIN_RS: &str = include_str!("../../mcp-proxy-agent/src/main.rs");
 
+/// Sha256 over the agent source bytes, computed by `build.rs` from the same
+/// files `include_str!` captured. Checked before every sandbox build — a
+/// mismatch means the embedded bytes do not match what the signed release
+/// intended to ship, so we refuse to copy the agent into a container.
+const EXPECTED_AGENT_SRC_SHA256: &str = env!("MCP_PROXY_AGENT_SRC_SHA256");
+
 /// What the host needs to know to run a server in a Docker sandbox.
 pub struct SandboxConfig<'a> {
     pub server_id: &'a str,
@@ -58,6 +64,7 @@ pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
     let tag = compute_image_tag(&cfg);
 
     if !image_exists(&tag)? {
+        verify_agent_integrity()?;
         let ctx_dir = cfg.build_root.join(sanitize_component(cfg.server_id));
         write_build_context(&ctx_dir, cfg.image)?;
         docker_build(&ctx_dir, &tag)?;
@@ -87,6 +94,32 @@ fn ensure_docker_available() -> Result<(), String> {
             "Docker is not installed or not on PATH. Install Docker Desktop and retry.".to_string(),
         ),
     }
+}
+
+// ---------------------------------------------------------------------------
+// agent integrity
+// ---------------------------------------------------------------------------
+
+/// Hash the embedded agent bytes and compare against the build-time expected
+/// value. Called before writing the Docker build context so a corrupted or
+/// tampered binary cannot silently inject a different agent into a sandbox.
+fn verify_agent_integrity() -> Result<(), String> {
+    let actual = agent_src_sha256(AGENT_CARGO_TOML.as_bytes(), AGENT_MAIN_RS.as_bytes());
+    if actual != EXPECTED_AGENT_SRC_SHA256 {
+        return Err(format!(
+            "Refusing to build sandbox image: embedded agent source hash {actual} does not match \
+             expected {EXPECTED_AGENT_SRC_SHA256} baked in at compile time. This binary may be \
+             corrupted or tampered with — reinstall from the signed release."
+        ));
+    }
+    Ok(())
+}
+
+fn agent_src_sha256(cargo_toml: &[u8], main_rs: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(cargo_toml);
+    h.update(main_rs);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +512,29 @@ mod tests {
             &extra_net,
         ));
         assert_eq!(a, b, "env_vars and extra_args must not affect image tag");
+    }
+
+    // --- Agent integrity -------------------------------------------------
+
+    #[test]
+    fn agent_src_sha256_matches_build_time_constant() {
+        let got = agent_src_sha256(AGENT_CARGO_TOML.as_bytes(), AGENT_MAIN_RS.as_bytes());
+        assert_eq!(
+            got, EXPECTED_AGENT_SRC_SHA256,
+            "runtime hash of embedded agent source must match the value build.rs emitted"
+        );
+    }
+
+    #[test]
+    fn verify_agent_integrity_accepts_unmodified_embed() {
+        verify_agent_integrity().expect("untampered build should pass integrity check");
+    }
+
+    #[test]
+    fn agent_src_sha256_is_sensitive_to_byte_changes() {
+        let a = agent_src_sha256(b"fn main() {}", b"");
+        let b = agent_src_sha256(b"fn main() { evil(); }", b"");
+        assert_ne!(a, b);
     }
 
     // --- Sanitizer -------------------------------------------------------

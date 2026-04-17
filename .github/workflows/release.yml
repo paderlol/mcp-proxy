@@ -1,0 +1,106 @@
+name: Release (macOS signed DMG)
+
+# Triggered manually or by pushing a `v*` tag. The workflow imports the Apple
+# Developer ID certificate from the `APPLE_CERTIFICATE` secret, builds the
+# Tauri bundle, and notarizes the resulting DMG with Apple's notary service.
+#
+# Required repository secrets:
+#   APPLE_CERTIFICATE           base64 .p12 containing the Developer ID cert+key
+#   APPLE_CERTIFICATE_PASSWORD  export password for the .p12
+#   APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID                    Apple ID used for notarization
+#   APPLE_PASSWORD              app-specific password for APPLE_ID
+#   APPLE_TEAM_ID               10-char team ID (also the TEAMID inside the identity)
+#   KEYCHAIN_PASSWORD           any non-empty string; ephemeral keychain unlock
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos-dmg:
+    name: Build signed + notarized DMG
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install frontend deps
+        run: npm ci
+
+      # Import the Developer ID cert into an ephemeral keychain so `codesign`
+      # can find it. The keychain is destroyed with the runner, so the cert
+      # never lingers on a shared machine.
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 3600 build.keychain
+          security import /tmp/cert.p12 \
+            -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Build, sign, and notarize via tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # tauri-action picks these up automatically when the bundle config
+          # leaves signingIdentity null.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          args: --target universal-apple-darwin
+
+      - name: Verify codesign on the built app
+        run: |
+          set -euo pipefail
+          APP=$(find src-tauri/target -name "MCP Proxy.app" -maxdepth 6 -print -quit)
+          if [ -z "$APP" ]; then
+            echo "Could not find built .app bundle" >&2
+            exit 1
+          fi
+          codesign -dv --verbose=4 "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl -a -vv -t install "$APP"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-proxy-macos-dmg
+          path: src-tauri/target/**/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Tear down ephemeral keychain
+        if: always()
+        run: security delete-keychain build.keychain || true
