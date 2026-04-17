@@ -27,7 +27,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // Use whichever Chromium-flavored browser is already present, so a fresh
+      // clone doesn't have to pull Playwright's bundled 150 MB build.
+      //
+      // Local (macOS): `channel: "chrome"` picks up `/Applications/Google
+      // Chrome.app` directly. Set PLAYWRIGHT_CHROMIUM=1 to force the bundled
+      // build instead (CI does this — see .github/workflows/ci.yml).
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.env.PLAYWRIGHT_CHROMIUM ? {} : { channel: "chrome" }),
+      },
     },
   ],
 
