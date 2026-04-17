@@ -2,15 +2,12 @@
 
 use mcp_proxy_common::models::{McpServerConfig, SecretMeta};
 use mcp_proxy_common::store::{load_json, save_json, secrets_meta_path, servers_path};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tokio::process::Child;
 
 pub struct AppState {
     pub servers: Mutex<Vec<McpServerConfig>>,
     pub secrets_meta: Mutex<Vec<SecretMeta>>,
-    pub running_proxies: Mutex<HashMap<String, Child>>,
     #[allow(dead_code)]
     pub data_dir: PathBuf,
 }
@@ -28,7 +25,6 @@ impl AppState {
         Self {
             servers: Mutex::new(servers),
             secrets_meta: Mutex::new(secrets_meta),
-            running_proxies: Mutex::new(HashMap::new()),
             data_dir: mcp_proxy_common::store::app_data_dir(),
         }
     }

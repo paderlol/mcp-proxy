@@ -13,8 +13,6 @@ import {
   Container,
   ShieldAlert,
   ShieldCheck,
-  Play,
-  Square,
   Trash2,
   LibraryBig,
   KeyRound,
@@ -29,16 +27,8 @@ import type { RegistryEntry } from "../data/registry";
 type RunModeType = "Local" | "DockerSandbox";
 
 export function ServerConfig() {
-  const {
-    servers,
-    proxyStatuses,
-    fetchServers,
-    addServer,
-    updateServer,
-    deleteServer,
-    startProxy,
-    stopProxy,
-  } = useServers();
+  const { servers, fetchServers, addServer, updateServer, deleteServer } =
+    useServers();
   const { secrets, fetchSecrets } = useSecrets();
 
   const [showAdd, setShowAdd] = useState(false);
@@ -255,8 +245,6 @@ export function ServerConfig() {
       ) : (
         <div className="flex flex-col gap-3">
           {filteredServers.map((s) => {
-            const status = proxyStatuses[s.id];
-            const running = status?.running ?? false;
             return (
               <Card key={s.id}>
                 <div className="flex items-center justify-between">
@@ -265,9 +253,6 @@ export function ServerConfig() {
                       <p className="text-sm font-bold text-text-primary">
                         {s.name}
                       </p>
-                      <Badge variant={running ? "success" : "default"}>
-                        {running ? "Running" : "Stopped"}
-                      </Badge>
                       <Badge>
                         {s.run_mode.type === "Local" ? "Local" : "Docker"}
                       </Badge>
@@ -283,23 +268,6 @@ export function ServerConfig() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    {running ? (
-                      <PillButton
-                        variant="outlined"
-                        onClick={() => stopProxy(s.id)}
-                      >
-                        <Square size={12} className="mr-1" />
-                        Stop
-                      </PillButton>
-                    ) : (
-                      <PillButton
-                        variant="dark"
-                        onClick={() => startProxy(s.id)}
-                      >
-                        <Play size={12} className="mr-1" />
-                        Start
-                      </PillButton>
-                    )}
                     <PillButton
                       variant="outlined"
                       onClick={() => handleEdit(s)}
