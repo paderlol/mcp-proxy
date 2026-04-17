@@ -84,16 +84,16 @@ async fn get_keychain(id: &str) -> Result<String, String> {
 }
 
 fn set_keychain(id: &str, value: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, id)
-        .map_err(|e| format!("Keychain error: {e}"))?;
+    let entry =
+        keyring::Entry::new(KEYCHAIN_SERVICE, id).map_err(|e| format!("Keychain error: {e}"))?;
     entry
         .set_password(value)
         .map_err(|e| format!("Failed to store secret '{id}' in Keychain: {e}"))
 }
 
 fn delete_keychain(id: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, id)
-        .map_err(|e| format!("Keychain error: {e}"))?;
+    let entry =
+        keyring::Entry::new(KEYCHAIN_SERVICE, id).map_err(|e| format!("Keychain error: {e}"))?;
     // Idempotent — ignore "not found"
     let _ = entry.delete_credential();
     Ok(())

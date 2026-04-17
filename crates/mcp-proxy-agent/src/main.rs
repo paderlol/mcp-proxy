@@ -45,6 +45,9 @@ fn main() {
     // 5. Exec — replaces this process entirely.
     //    stdin/stdout are inherited, so subsequent MCP traffic flows through.
     let err = cmd.exec();
-    eprintln!("mcp-proxy-agent: failed to exec {:?}: {err}", payload.command);
+    eprintln!(
+        "mcp-proxy-agent: failed to exec {:?}: {err}",
+        payload.command
+    );
     std::process::exit(1);
 }

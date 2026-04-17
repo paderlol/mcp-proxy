@@ -15,9 +15,7 @@ pub async fn resolve_secret(id: &str, source: &SecretSource) -> Result<String, S
                 .args(["read", reference])
                 .output()
                 .await
-                .map_err(|e| {
-                    format!("Failed to run `op` CLI: {e}. Is 1Password CLI installed?")
-                })?;
+                .map_err(|e| format!("Failed to run `op` CLI: {e}. Is 1Password CLI installed?"))?;
             if !output.status.success() {
                 return Err(format!(
                     "1Password `op read` failed: {}",

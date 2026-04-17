@@ -1,8 +1,6 @@
 use crate::store::AppState;
 use mcp_proxy_common::models::{SecretMeta, SecretSource};
-use mcp_proxy_common::secret_resolver::{
-    delete_secret_local, resolve_secret, store_secret_local,
-};
+use mcp_proxy_common::secret_resolver::{delete_secret_local, resolve_secret, store_secret_local};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 

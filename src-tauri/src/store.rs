@@ -1,9 +1,7 @@
 //! Tauri-specific AppState wrapper around the shared JSON store.
 
 use mcp_proxy_common::models::{McpServerConfig, SecretMeta};
-use mcp_proxy_common::store::{
-    load_json, save_json, secrets_meta_path, servers_path,
-};
+use mcp_proxy_common::store::{load_json, save_json, secrets_meta_path, servers_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -15,6 +13,12 @@ pub struct AppState {
     pub running_proxies: Mutex<HashMap<String, Child>>,
     #[allow(dead_code)]
     pub data_dir: PathBuf,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppState {

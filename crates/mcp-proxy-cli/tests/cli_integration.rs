@@ -104,9 +104,7 @@ fn list_shows_configured_servers() {
             vec!["-y", "@github/github-mcp-server"],
             true,
             json!({ "type": "Local" }),
-            vec![
-                json!({ "env_var_name": "GITHUB_TOKEN", "secret_ref": "gh-pat" }),
-            ],
+            vec![json!({ "env_var_name": "GITHUB_TOKEN", "secret_ref": "gh-pat" }),],
         ),
         server_fixture(
             "sandbox",
@@ -211,9 +209,7 @@ fn run_missing_secret_reference_fails() {
         vec!["-c", "exit 0"],
         true,
         json!({ "type": "Local" }),
-        vec![
-            json!({ "env_var_name": "API_KEY", "secret_ref": "nonexistent" }),
-        ],
+        vec![json!({ "env_var_name": "API_KEY", "secret_ref": "nonexistent" }),],
     )]));
     // Deliberately don't write secrets_meta.json.
 

@@ -85,9 +85,7 @@ pub async fn write_client_config(
     // Produce the rendered file contents
     let existing = fs::read_to_string(&path).unwrap_or_default();
     let (new_contents, managed_count, preserved_count) = match client.as_str() {
-        "claude" | "cursor" => {
-            merge_json(&existing, "mcpServers", entries_json(&enabled, false))?
-        }
+        "claude" | "cursor" => merge_json(&existing, "mcpServers", entries_json(&enabled, false))?,
         "windsurf" => merge_json(&existing, "servers", entries_json(&enabled, false))?,
         "codex" => merge_toml(&existing, "mcp_servers", entries_toml(&enabled))?,
         _ => return Err(format!("Unknown client: {client}")),
@@ -202,8 +200,9 @@ fn merge_json(
     let mut root: serde_json::Value = if existing.trim().is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(existing)
-            .map_err(|e| format!("Existing config is not valid JSON: {e}. Aborting to avoid data loss."))?
+        serde_json::from_str(existing).map_err(|e| {
+            format!("Existing config is not valid JSON: {e}. Aborting to avoid data loss.")
+        })?
     };
 
     let obj = root.as_object_mut().ok_or_else(|| {
@@ -257,7 +256,9 @@ fn merge_toml(
     } else {
         existing
             .parse::<toml::Value>()
-            .map_err(|e| format!("Existing config is not valid TOML: {e}. Aborting to avoid data loss."))?
+            .map_err(|e| {
+                format!("Existing config is not valid TOML: {e}. Aborting to avoid data loss.")
+            })?
             .as_table()
             .cloned()
             .ok_or_else(|| "Existing TOML root is not a table".to_string())?
@@ -302,8 +303,12 @@ fn merge_toml(
 fn atomic_write_with_backup(path: &Path, contents: &str) -> Result<Option<PathBuf>, String> {
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent directory {}: {e}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create parent directory {}: {e}",
+                parent.display()
+            )
+        })?;
     }
 
     // Back up existing file if present
@@ -326,8 +331,11 @@ fn atomic_write_with_backup(path: &Path, contents: &str) -> Result<Option<PathBu
     fs::write(&tmp, contents)
         .map_err(|e| format!("Failed to write temp file {}: {e}", tmp.display()))?;
     fs::rename(&tmp, path).map_err(|e| {
-        format!("Failed to commit write (rename {} → {}): {e}",
-                tmp.display(), path.display())
+        format!(
+            "Failed to commit write (rename {} → {}): {e}",
+            tmp.display(),
+            path.display()
+        )
     })?;
 
     Ok(backup_path)
@@ -398,13 +406,15 @@ mod tests {
             }
         }"#;
         let ours = entries_json(&[sample_server("github")], false);
-        let (out, managed, preserved) =
-            merge_json(existing, "mcpServers", ours).unwrap();
+        let (out, managed, preserved) = merge_json(existing, "mcpServers", ours).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(managed, 1);
         assert_eq!(preserved, 1);
-        assert_eq!(v["mcpServers"]["other-tool"]["command"], "/usr/local/bin/other");
+        assert_eq!(
+            v["mcpServers"]["other-tool"]["command"],
+            "/usr/local/bin/other"
+        );
         assert_eq!(v["mcpServers"]["github"]["command"], "mcp-proxy");
     }
 
@@ -417,8 +427,7 @@ mod tests {
             }
         }"#;
         let ours = entries_json(&[sample_server("current")], false);
-        let (out, managed, preserved) =
-            merge_json(existing, "mcpServers", ours).unwrap();
+        let (out, managed, preserved) = merge_json(existing, "mcpServers", ours).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(managed, 1);
@@ -438,7 +447,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(preserved, 0);
-        assert_eq!(v["someOtherKey"], true, "other top-level keys must be preserved");
+        assert_eq!(
+            v["someOtherKey"], true,
+            "other top-level keys must be preserved"
+        );
         assert_eq!(v["mcpServers"]["a"]["command"], "mcp-proxy");
     }
 
@@ -478,8 +490,7 @@ command = "/usr/local/bin/other"
 args = []
 "#;
         let ours = entries_toml(&[sample_server("github")]);
-        let (out, managed, preserved) =
-            merge_toml(existing, "mcp_servers", ours).unwrap();
+        let (out, managed, preserved) = merge_toml(existing, "mcp_servers", ours).unwrap();
         assert_eq!(managed, 1);
         assert_eq!(preserved, 1);
         assert!(out.contains("[mcp_servers.user-thing]"));
@@ -495,8 +506,7 @@ command = "mcp-proxy"
 args = ["run", "deleted"]
 "#;
         let ours = entries_toml(&[sample_server("current")]);
-        let (out, _, preserved) =
-            merge_toml(existing, "mcp_servers", ours).unwrap();
+        let (out, _, preserved) = merge_toml(existing, "mcp_servers", ours).unwrap();
         assert_eq!(preserved, 0);
         assert!(!out.contains("mcp_servers.deleted"));
         assert!(out.contains("mcp_servers.current"));
