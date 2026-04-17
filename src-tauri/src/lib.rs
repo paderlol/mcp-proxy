@@ -1,5 +1,6 @@
 mod commands;
 pub mod store;
+pub mod tray;
 
 use store::AppState;
 
@@ -11,6 +12,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
+        .setup(|app| {
+            tray::setup(app.handle())?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            tray::handle_window_event(window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             commands::secrets::list_secrets,
             commands::secrets::get_secret,
