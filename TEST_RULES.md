@@ -224,19 +224,26 @@ Before merging a change, verify:
 
 ---
 
-## 7. CI/CD (future)
+## 7. CI/CD
 
-Not configured yet. When CI is set up, the pipeline should:
+GitHub Actions workflow at [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and pull request to `main`:
 
-1. `cargo check --workspace`
-2. `cargo clippy --workspace -- -D warnings`
+**Rust job** (macos-latest, because `keyring` needs `Security.framework`):
+1. `cargo fmt --all -- --check`
+2. `cargo clippy --workspace --all-targets -- -D warnings`
 3. `cargo test --workspace`
-4. `cargo fmt --check`
-5. `npm ci && npm run build`
-6. Build the CLI release binary and cache it as an artifact
-7. (Eventually) run a Playwright/Tauri end-to-end test that launches the desktop app and drives it through a fixture scenario
+4. `cargo build -p mcp-proxy-cli --release` + `--version` / `--help` smoke
 
-Track this in the issue tracker; blocker: no GitHub repo yet.
+**Frontend job** (ubuntu-latest):
+1. `npm ci`
+2. `npm run build` (TypeScript strict + Vite)
+3. `npm test` (Vitest)
+
+Concurrency is set to cancel older runs of the same branch when a new push arrives.
+
+**Not yet in CI**:
+- Playwright / Tauri in-app end-to-end test (needs a headful / Xvfb setup)
+- `cargo test -p mcp-proxy-cli -- --ignored docker` (requires Docker in the runner)
 
 ---
 
@@ -258,5 +265,5 @@ A test that fails once out of 20 runs is banned from the suite — either fix it
 8. **`generate_config` integration through the Tauri command** — today only the pure helpers are tested; cover the `State<AppState>`-taking async command too.
 9. **React component tests** — start with Modal (open/close/ESC) and the Env Mapping editor (add/remove rows). Needs `@testing-library/react` + jsdom.
 10. **Zustand store tests** — `useServers` / `useSecrets` with mocked `invoke`; catches logic bugs in optimistic updates and error handling.
-11. **CI pipeline** — run `cargo test --workspace`, `npm test`, `npm run build` on every push once the repo is hosted.
+11. ✅ ~~CI pipeline~~ — [.github/workflows/ci.yml](.github/workflows/ci.yml) runs fmt + clippy + test + build on every push / PR to `main`.
 12. **Docker sandbox integration test** — currently gated behind `#[ignore]`. Enable in a CI job that has Docker, or write as a shell script under `scripts/` so it runs on manual request.

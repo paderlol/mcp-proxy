@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel older runs of the same branch when a new push arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Rust — check, clippy, fmt, test, CLI build
+  # macOS because `keyring` with `apple-native` requires Security.framework
+  # and because Tauri's own build toolchain is macOS-first for this project.
+  # ---------------------------------------------------------------------
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        # Treat warnings as errors. Tweak this list if a specific lint needs
+        # project-wide allowance — prefer `#[allow]` at the call site first.
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: Build CLI release binary (smoke)
+        run: cargo build -p mcp-proxy-cli --release
+
+      - name: CLI sanity
+        run: |
+          ./target/release/mcp-proxy --version
+          ./target/release/mcp-proxy --help
+
+  # ---------------------------------------------------------------------
+  # Frontend — type check + Vite build + Vitest
+  # ---------------------------------------------------------------------
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Type check + build
+        run: npm run build
+
+      - name: Vitest
+        run: npm test
