@@ -3,7 +3,6 @@ import type {
   ClientConfigInfo,
   EnvMapping,
   McpServerConfig,
-  ProxyStatus,
   SecretEntry,
   SecretSource,
   VaultStatus,
@@ -47,14 +46,6 @@ export const updateServer = (server: McpServerConfig) =>
   invoke<McpServerConfig>("update_server", { server });
 export const deleteServer = (id: string) =>
   invoke<void>("delete_server", { id });
-
-// Proxy
-export const startProxy = (serverId: string) =>
-  invoke<ProxyStatus>("start_proxy", { serverId });
-export const stopProxy = (serverId: string) =>
-  invoke<void>("stop_proxy", { serverId });
-export const getProxyStatus = (serverId: string) =>
-  invoke<ProxyStatus>("get_proxy_status", { serverId });
 
 // Config generation
 export const generateConfig = (client: string) =>

@@ -2,22 +2,34 @@ import { useEffect } from "react";
 import { MainContent } from "../components/layout/MainContent";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
-import { Server, KeyRound, Activity, Shield } from "lucide-react";
+import { Server, KeyRound, Shield } from "lucide-react";
 import { useServers } from "../hooks/useServers";
 import { useSecrets } from "../hooks/useSecrets";
+import { useVault } from "../hooks/useVault";
 
 export function Dashboard() {
-  const { servers, proxyStatuses, fetchServers } = useServers();
+  const { servers, fetchServers } = useServers();
   const { secrets, fetchSecrets } = useSecrets();
+  const { status: vaultStatus, refresh: refreshVault } = useVault();
 
   useEffect(() => {
     fetchServers();
     fetchSecrets();
-  }, [fetchServers, fetchSecrets]);
+    refreshVault();
+  }, [fetchServers, fetchSecrets, refreshVault]);
 
-  const runningCount = Object.values(proxyStatuses).filter(
-    (s) => s.running,
-  ).length;
+  // Pick a sensible label for the secret-storage status card.
+  const storageLabel = vaultStatus?.backend === "keychain"
+    ? "Ready"
+    : vaultStatus?.unlocked
+      ? "Unlocked"
+      : vaultStatus?.exists
+        ? "Locked"
+        : "Not set up";
+  const storageColor =
+    vaultStatus?.backend === "keychain" || vaultStatus?.unlocked
+      ? "text-brand"
+      : "text-warning";
 
   const stats = [
     {
@@ -33,16 +45,11 @@ export function Dashboard() {
       color: "text-info",
     },
     {
-      label: "Active Proxies",
-      value: String(runningCount),
-      icon: Activity,
-      color: "text-warning",
-    },
-    {
-      label: "Keychain Status",
-      value: "OK",
+      label:
+        vaultStatus?.backend === "keychain" ? "Keychain" : "Local Vault",
+      value: storageLabel,
       icon: Shield,
-      color: "text-brand",
+      color: storageColor,
     },
   ];
 
@@ -51,7 +58,7 @@ export function Dashboard() {
       title="Dashboard"
       description="Overview of your MCP proxy configuration"
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <div className="flex items-center gap-3">
@@ -87,26 +94,31 @@ export function Dashboard() {
           </Card>
         ) : (
           <div className="flex flex-col gap-2">
-            {servers.map((s) => {
-              const status = proxyStatuses[s.id];
-              return (
-                <Card key={s.id}>
-                  <div className="flex items-center justify-between">
-                    <div>
+            {servers.map((s) => (
+              <Card key={s.id}>
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <p className="text-sm font-bold text-text-primary">
                         {s.name}
                       </p>
-                      <p className="text-xs text-text-secondary font-mono">
-                        {s.command} {s.args.join(" ")}
-                      </p>
+                      <Badge>
+                        {s.run_mode.type === "Local" ? "Local" : "Docker"}
+                      </Badge>
+                      {s.env_mappings.length > 0 && (
+                        <Badge>
+                          <KeyRound size={10} className="mr-1" />
+                          {s.env_mappings.length} env
+                        </Badge>
+                      )}
                     </div>
-                    <Badge variant={status?.running ? "success" : "default"}>
-                      {status?.running ? "Running" : "Stopped"}
-                    </Badge>
+                    <p className="text-xs text-text-secondary font-mono truncate">
+                      {s.command} {s.args.join(" ")}
+                    </p>
                   </div>
-                </Card>
-              );
-            })}
+                </div>
+              </Card>
+            ))}
           </div>
         )}
       </div>
@@ -151,8 +163,9 @@ export function Dashboard() {
                   Generate Config
                 </p>
                 <p className="text-xs text-text-secondary">
-                  Generate config for Claude, Codex, Cursor, VS Code, or
-                  Windsurf. Secrets never appear in config files.
+                  Write config straight to Claude, Codex, Cursor, VS Code, or
+                  Windsurf. Secrets never appear in config files; they are
+                  resolved at runtime by <code className="text-text-bright">mcp-proxy run</code>.
                 </p>
               </div>
             </div>
