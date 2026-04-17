@@ -13,8 +13,13 @@ test.describe("Dashboard", () => {
     ).toBeVisible();
 
     // Stats cards render counts from list_servers + list_secrets. Both empty.
-    await expect(page.getByText("MCP Servers")).toBeVisible();
-    await expect(page.getByText("Secrets Stored")).toBeVisible();
+    // Use exact match — "MCP Servers" also appears in page copy / sidebar.
+    await expect(
+      page.getByText("MCP Servers", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Secrets Stored", { exact: true }),
+    ).toBeVisible();
 
     await expect(
       page.getByText("No MCP servers configured yet"),
