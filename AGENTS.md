@@ -2,6 +2,14 @@
 
 A secret management proxy for MCP servers — provides secure secret storage, transparent proxying, and optional Docker sandboxing.
 
+## Workflow Rules
+
+Before making code changes, read [rules.md](rules.md).
+
+- `rules.md` is the source of truth for branch selection, fork target, branch naming, commits, and PR workflow.
+- Default flow: branch from `main`, keep one branch per task, and do not commit directly to `main`.
+- If write access to `paderlol/mcp-proxy` is unavailable, fork `paderlol/mcp-proxy` and open the PR back to upstream `main`.
+
 ## Overview
 
 Solves the problem of MCP servers lacking a unified secret management solution. Users manage API keys/tokens through a desktop app, which automatically injects secrets as environment variables into MCP server processes.
