@@ -5,6 +5,9 @@
   "permissions": [
     "core:default",
     "shell:allow-open",
-    "opener:default"
+    "opener:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }
