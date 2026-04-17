@@ -58,9 +58,7 @@ pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
     let tag = compute_image_tag(&cfg);
 
     if !image_exists(&tag)? {
-        let ctx_dir = cfg
-            .build_root
-            .join(sanitize_component(cfg.server_id));
+        let ctx_dir = cfg.build_root.join(sanitize_component(cfg.server_id));
         write_build_context(&ctx_dir, cfg.image)?;
         docker_build(&ctx_dir, &tag)?;
     }
@@ -86,8 +84,7 @@ fn ensure_docker_available() -> Result<(), String> {
             String::from_utf8_lossy(&o.stderr).trim()
         )),
         Err(_) => Err(
-            "Docker is not installed or not on PATH. Install Docker Desktop and retry."
-                .to_string(),
+            "Docker is not installed or not on PATH. Install Docker Desktop and retry.".to_string(),
         ),
     }
 }
@@ -211,9 +208,7 @@ fn image_exists(tag: &str) -> Result<bool, String> {
 }
 
 fn docker_build(ctx_dir: &Path, tag: &str) -> Result<(), String> {
-    eprintln!(
-        "mcp-proxy: building sandbox image {tag} (first build may take ~2 min)"
-    );
+    eprintln!("mcp-proxy: building sandbox image {tag} (first build may take ~2 min)");
     let status = Command::new("docker")
         .args(["build", "-t", tag])
         .arg(ctx_dir)
@@ -532,11 +527,12 @@ mod tests {
         // Plant a stale file
         fs::write(ctx.join("stale.txt"), "should vanish").unwrap();
         write_build_context(&ctx, "python:3.12-alpine").unwrap();
-        assert!(!ctx.join("stale.txt").exists(), "rebuild should wipe stale files");
         assert!(
-            fs::read_to_string(ctx.join("Dockerfile"))
-                .unwrap()
-                .contains("FROM python:3.12-alpine")
+            !ctx.join("stale.txt").exists(),
+            "rebuild should wipe stale files"
         );
+        assert!(fs::read_to_string(ctx.join("Dockerfile"))
+            .unwrap()
+            .contains("FROM python:3.12-alpine"));
     }
 }

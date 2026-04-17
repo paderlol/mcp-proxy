@@ -2,10 +2,7 @@ use crate::store::AppState;
 use tauri::State;
 
 #[tauri::command]
-pub async fn generate_config(
-    client: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn generate_config(client: String, state: State<'_, AppState>) -> Result<String, String> {
     let servers = state.servers.lock().map_err(|e| e.to_string())?;
     let enabled: Vec<_> = servers.iter().filter(|s| s.enabled).collect();
 
@@ -37,7 +34,11 @@ fn generate_claude_cursor(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id]).as_array().unwrap().clone().into(),
+            serde_json::json!(["run", &s.id])
+                .as_array()
+                .unwrap()
+                .clone()
+                .into(),
         );
         map.insert(s.id.clone(), serde_json::Value::Object(entry));
     }
@@ -74,7 +75,11 @@ fn generate_vscode(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id]).as_array().unwrap().clone().into(),
+            serde_json::json!(["run", &s.id])
+                .as_array()
+                .unwrap()
+                .clone()
+                .into(),
         );
         map.insert(s.id.clone(), serde_json::Value::Object(entry));
     }
@@ -95,7 +100,11 @@ fn generate_windsurf(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id]).as_array().unwrap().clone().into(),
+            serde_json::json!(["run", &s.id])
+                .as_array()
+                .unwrap()
+                .clone()
+                .into(),
         );
         map.insert(s.id.clone(), serde_json::Value::Object(entry));
     }
