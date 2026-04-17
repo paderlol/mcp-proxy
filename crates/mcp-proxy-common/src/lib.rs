@@ -2,6 +2,7 @@ pub mod local_backend;
 pub mod models;
 pub mod secret_resolver;
 pub mod store;
+pub mod vault;
 
 /// App identifier — must match `identifier` in src-tauri/tauri.conf.json
 pub const APP_IDENTIFIER: &str = "com.mcp-proxy.app";

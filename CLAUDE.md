@@ -43,9 +43,10 @@ npm run dev                     # Frontend only (localhost:1420)
 cargo tauri build               # Production build (DMG)
 npm run build                   # Frontend only build
 
-# Test — Rust (55 tests)
+
+# Test — Rust (70 tests)
 cargo test --workspace
-cargo test -p mcp-proxy-common   # 6 unit tests (models + local_backend)
+cargo test -p mcp-proxy-common   # 9 unit + 12 vault = 21 tests
 cargo test -p mcp-proxy-cli      # 13 docker unit + 10 CLI integ + 2 stdio E2E
 cargo test -p mcp-proxy          # 6 config + 18 client_write = 24 tests
 
@@ -127,12 +128,15 @@ Core types in `crates/mcp-proxy-common/src/models.rs`:
 
 Three backends:
 
-### Encrypted Local File (cross-platform, default)
-- AES-256-GCM encrypted file, protected by a user-set master password
-- Key derived via Argon2 from master password
-- Works on any platform without external dependencies
+### Encrypted Local File (Linux / Windows default)
+- AES-256-GCM ciphertext with per-write nonce, stored at `$data_dir/vault.bin`
+- 32-byte key derived via Argon2id (OWASP "interactive" params) from user master password
+- Key held in-memory as `Zeroizing<[u8; 32]>` while the process runs
+- Tauri GUI: **Settings → Local Vault** card to unlock / create / lock
+- CLI: reads `MCP_PROXY_MASTER_PASSWORD` env var to unlock at launch
+- See [crates/mcp-proxy-common/src/vault.rs](crates/mcp-proxy-common/src/vault.rs) for the file format and threat model
 
-### macOS Keychain (macOS only)
+### macOS Keychain (macOS default — preferred when available)
 - Stored via `keyring` crate with service name `com.mcp-proxy`
 - Hardware-backed encryption on Apple Silicon
 
