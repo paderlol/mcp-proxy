@@ -7,8 +7,9 @@
 
 use mcp_proxy_common::local_backend;
 use serde::Serialize;
+use tauri::AppHandle;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct VaultStatus {
     /// Which backend Local routes to. `"keychain"` on macOS; `"encrypted-file"` otherwise.
     pub backend: &'static str,
@@ -22,37 +23,32 @@ pub struct VaultStatus {
 
 #[tauri::command]
 pub async fn vault_status() -> Result<VaultStatus, String> {
-    Ok(VaultStatus {
-        backend: local_backend::backend_id(),
-        // Keychain is always "present" from our view; see VaultStatus doc.
-        exists: matches!(
-            local_backend::default_backend(),
-            local_backend::LocalBackend::Keychain
-        ) || local_backend::vault_exists(),
-        unlocked: local_backend::is_unlocked(),
-    })
+    Ok(crate::vault_events::current_status())
 }
 
 #[tauri::command]
-pub async fn unlock_vault(password: String) -> Result<(), String> {
-    local_backend::unlock_vault(&password)
+pub async fn unlock_vault(app: AppHandle, password: String) -> Result<(), String> {
+    local_backend::unlock_vault(&password)?;
+    crate::vault_events::emit(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn lock_vault() -> Result<(), String> {
+pub async fn lock_vault(app: AppHandle) -> Result<(), String> {
     local_backend::lock_vault();
-    Ok(())
+    crate::vault_events::emit(&app).map_err(|e| e.to_string())
 }
 
 /// Rotate the master password. Requires the vault to currently be unlocked.
 #[tauri::command]
-pub async fn change_vault_password(new_password: String) -> Result<(), String> {
-    local_backend::change_password(&new_password)
+pub async fn change_vault_password(app: AppHandle, new_password: String) -> Result<(), String> {
+    local_backend::change_password(&new_password)?;
+    crate::vault_events::emit(&app).map_err(|e| e.to_string())
 }
 
 /// Delete the vault file — wipes all Local secrets. Caller MUST confirm with
 /// the user before invoking; this command itself asks no questions.
 #[tauri::command]
-pub async fn reset_vault() -> Result<(), String> {
-    local_backend::reset_vault()
+pub async fn reset_vault(app: AppHandle) -> Result<(), String> {
+    local_backend::reset_vault()?;
+    crate::vault_events::emit(&app).map_err(|e| e.to_string())
 }

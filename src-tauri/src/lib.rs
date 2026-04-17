@@ -1,6 +1,7 @@
 mod commands;
 pub mod store;
 pub mod tray;
+pub mod vault_events;
 
 use store::AppState;
 

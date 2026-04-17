@@ -290,8 +290,9 @@ export function Settings() {
             <p className="text-xs text-text-secondary mb-4">
               Secrets marked <strong>Local</strong> are encrypted with a master
               password. The derived key is held in memory until you lock it or
-              close the app. To let the CLI unlock the vault at MCP-server
-              launch, set the{" "}
+              close the app. Unlocking in the desktop app also writes a
+              short-lived local session file so CLI launches can reuse the
+              derived key without re-prompting. You can still fall back to the{" "}
               <code className="text-text-bright">MCP_PROXY_MASTER_PASSWORD</code>{" "}
               environment variable in the shell that launches your AI client.
             </p>
