@@ -43,10 +43,12 @@ Known security gaps to address in future iterations.
     `mcp-proxy run` can unlock without prompts). It leaks via
     `/proc/PID/environ` on Linux. A future task could add a session-file
     handshake between the GUI and CLI to avoid the env var.
-  - No idle auto-lock. Vault stays unlocked until explicit Lock, process
-    exit, or crash. Future: lock after N minutes of UI idle.
-  - No "change master password" or "reset vault" flows. Reset = delete
-    `vault.bin` (data loss).
+  - ~~No idle auto-lock~~ — shipped. Settings page lets users pick a
+    timeout (Never / 5 min / 10 min / 30 min / 1 hr). Any user interaction
+    resets the timer; after the timeout the vault is locked automatically.
+  - ~~No "change master password" or "reset vault" flows~~ — shipped.
+    Settings card has both, guarded by a typed-confirmation modal for
+    reset.
   - macOS users keep using Keychain; there is no UI to opt into the vault
     on macOS yet.
 - **Files**: `crates/mcp-proxy-common/src/{vault,local_backend}.rs`, `src-tauri/src/commands/vault.rs`, `src/pages/Settings.tsx`

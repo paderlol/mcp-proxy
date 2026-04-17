@@ -43,3 +43,16 @@ pub async fn lock_vault() -> Result<(), String> {
     local_backend::lock_vault();
     Ok(())
 }
+
+/// Rotate the master password. Requires the vault to currently be unlocked.
+#[tauri::command]
+pub async fn change_vault_password(new_password: String) -> Result<(), String> {
+    local_backend::change_password(&new_password)
+}
+
+/// Delete the vault file — wipes all Local secrets. Caller MUST confirm with
+/// the user before invoking; this command itself asks no questions.
+#[tauri::command]
+pub async fn reset_vault() -> Result<(), String> {
+    local_backend::reset_vault()
+}
