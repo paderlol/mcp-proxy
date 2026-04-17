@@ -39,10 +39,18 @@ Known security gaps to address in future iterations.
   AES-256-GCM cipher, 32-byte key derived via Argon2id (19 MiB / 2 iters / 1 lane),
   single-blob JSON plaintext, atomic writes, 12 unit tests.
 - **Known residual risks / follow-ups**:
-  - `MCP_PROXY_MASTER_PASSWORD` env var is required for the CLI path (so
-    `mcp-proxy run` can unlock without prompts). It leaks via
-    `/proc/PID/environ` on Linux. A future task could add a session-file
-    handshake between the GUI and CLI to avoid the env var.
+  - ~~`MCP_PROXY_MASTER_PASSWORD` env var leaks via `/proc/PID/environ`~~
+    — shipped a session-file fallback:
+    [crates/mcp-proxy-common/src/session.rs](crates/mcp-proxy-common/src/session.rs).
+    When the GUI unlocks, it writes the derived 32-byte key (not the raw
+    password) to `$XDG_RUNTIME_DIR/com.mcp-proxy.app/session.key` (0600 on
+    Unix). The CLI tries the session file first and only falls back to
+    the env var if absent. The session is deleted on Lock, Change
+    Password, Reset, or clean GUI exit.
+    Remaining caveats: a same-UID attacker who can read the file still
+    gets the key (inherent limit of user-space caching); a hard crash can
+    leave the file on disk until next GUI launch (which deletes it on
+    startup if stale).
   - ~~No idle auto-lock~~ — shipped. Settings page lets users pick a
     timeout (Never / 5 min / 10 min / 30 min / 1 hr). Any user interaction
     resets the timer; after the timeout the vault is locked automatically.

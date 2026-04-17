@@ -188,6 +188,43 @@ impl Vault {
         })
     }
 
+    /// Open an existing vault with a pre-derived 32-byte key (skipping
+    /// Argon2). Used for the session-file fast path: the GUI derives once,
+    /// writes the key to a user-private session file, and subsequent CLI
+    /// invocations read the key directly instead of prompting for a password.
+    ///
+    /// Fails with [`VaultError::WrongPasswordOrCorrupted`] if the key
+    /// doesn't decrypt the file — typically means the session is stale
+    /// (vault password was rotated, salt changed) and the caller should
+    /// fall back to a fresh password.
+    pub fn open_with_key(
+        path: PathBuf,
+        derived_key: Zeroizing<[u8; 32]>,
+    ) -> Result<Self, VaultError> {
+        let raw = fs::read(&path).map_err(|e| VaultError::Io(e.to_string()))?;
+        let ParsedHeader { salt, .. } = parse_header(&raw)?;
+        let _ = decrypt_file(&raw, &derived_key)?;
+        Ok(Vault {
+            path,
+            salt,
+            derived_key,
+        })
+    }
+
+    /// The per-vault salt. Exposed to the `session` module so it can record
+    /// which vault a session key belongs to and detect stale sessions after
+    /// password rotation.
+    pub(crate) fn salt(&self) -> &[u8; SALT_LEN] {
+        &self.salt
+    }
+
+    /// The derived 32-byte key. Crate-private — only used by the `session`
+    /// module to persist the key to a user-private file. Callers outside
+    /// this crate cannot access it.
+    pub(crate) fn key_bytes(&self) -> &[u8; 32] {
+        &self.derived_key
+    }
+
     /// Look up one entry. `Ok(None)` if the key is not present.
     pub fn get(&self, id: &str) -> Result<Option<Zeroizing<String>>, VaultError> {
         let contents = self.read_contents()?;

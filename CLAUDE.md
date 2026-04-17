@@ -44,9 +44,9 @@ cargo tauri build               # Production build (DMG)
 npm run build                   # Frontend only build
 
 
-# Test — Rust (72 tests)
+# Test — Rust (78 tests)
 cargo test --workspace
-cargo test -p mcp-proxy-common   # 9 unit + 14 vault = 23 tests
+cargo test -p mcp-proxy-common   # 9 unit + 14 vault + 6 session = 29 tests
 cargo test -p mcp-proxy-cli      # 13 docker unit + 10 CLI integ + 2 stdio E2E
 cargo test -p mcp-proxy          # 6 config + 18 client_write = 24 tests
 
@@ -133,7 +133,7 @@ Three backends:
 - 32-byte key derived via Argon2id (OWASP "interactive" params) from user master password
 - Key held in-memory as `Zeroizing<[u8; 32]>` while the process runs
 - Tauri GUI: **Settings → Local Vault** card to unlock / create / lock
-- CLI: reads `MCP_PROXY_MASTER_PASSWORD` env var to unlock at launch
+- CLI: tries a GUI-written session file first (`$XDG_RUNTIME_DIR/com.mcp-proxy.app/session.key`, 0600), falls back to `MCP_PROXY_MASTER_PASSWORD` env var
 - See [crates/mcp-proxy-common/src/vault.rs](crates/mcp-proxy-common/src/vault.rs) for the file format and threat model
 
 ### macOS Keychain (macOS default — preferred when available)
