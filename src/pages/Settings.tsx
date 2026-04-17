@@ -18,11 +18,13 @@ import {
   IDLE_TIMEOUT_CHOICES,
   useVaultIdleTimeout,
 } from "../hooks/useVaultIdleTimeout";
+import { useAutostart } from "../hooks/useAutostart";
 
 export function Settings() {
   const { status, busy, error, refresh, unlock, lock, changePassword, reset } =
     useVault();
   const [idleTimeoutMs, setIdleTimeoutMs] = useVaultIdleTimeout();
+  const autostart = useAutostart();
 
   // unlock / create
   const [password, setPassword] = useState("");
@@ -117,10 +119,33 @@ export function Settings() {
             <div>
               <p className="text-sm text-text-primary">Launch at Login</p>
               <p className="text-xs text-text-secondary">
-                Start MCP Proxy automatically when you log in
+                Start MCP Proxy automatically when you log in. On macOS this
+                creates a LaunchAgent; on Linux an autostart .desktop entry;
+                on Windows a `Run` registry key.
               </p>
             </div>
-            <PillButton variant="outlined">Enable</PillButton>
+            {autostart.supported ? (
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant={autostart.enabled ? "success" : "default"}
+                >
+                  {autostart.enabled === null
+                    ? "…"
+                    : autostart.enabled
+                      ? "On"
+                      : "Off"}
+                </Badge>
+                <PillButton
+                  variant="outlined"
+                  onClick={() => autostart.toggle()}
+                  disabled={autostart.busy || autostart.enabled === null}
+                >
+                  {autostart.enabled ? "Disable" : "Enable"}
+                </PillButton>
+              </div>
+            ) : (
+              <Badge variant="default">Unavailable</Badge>
+            )}
           </div>
         </Card>
 

@@ -11,6 +11,11 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            // No extra launch args — the GUI starts with its default window.
+            None,
+        ))
         .manage(AppState::new())
         .setup(|app| {
             tray::setup(app.handle())?;
