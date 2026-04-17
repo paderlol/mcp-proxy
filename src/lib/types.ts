@@ -10,6 +10,7 @@ export interface McpServerConfig {
   trusted: boolean;
   created_at: string;
   updated_at: string;
+  first_launched_at?: string;
 }
 
 export type RunMode =

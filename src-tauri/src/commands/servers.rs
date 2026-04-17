@@ -72,9 +72,15 @@ pub async fn update_server(
 ) -> Result<McpServerConfig, String> {
     let mut servers = state.servers.lock().map_err(|e| e.to_string())?;
     if let Some(existing) = servers.iter_mut().find(|s| s.id == server.id) {
+        // `first_launched_at` is written only by the CLI on launch; the
+        // frontend never sends it back. Preserve the stored value across
+        // GUI updates so a re-save doesn't wipe the launch history.
+        let preserved_first_launched_at = existing.first_launched_at;
         *existing = server.clone();
+        existing.first_launched_at = preserved_first_launched_at;
+        let merged = existing.clone();
         state.save_servers(&servers);
-        Ok(server)
+        Ok(merged)
     } else {
         Err(format!("Server '{}' not found", server.id))
     }
