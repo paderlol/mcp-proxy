@@ -17,6 +17,7 @@ interface ServersStore {
     runModeType?: string;
     dockerImage?: string;
     envMappings?: EnvMapping[];
+    trusted?: boolean;
   }) => Promise<McpServerConfig>;
   updateServer: (server: McpServerConfig) => Promise<McpServerConfig>;
   deleteServer: (id: string) => Promise<void>;

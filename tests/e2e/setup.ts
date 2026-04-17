@@ -41,6 +41,13 @@ export interface MockVault {
 export interface MockState {
   servers: MockServer[];
   secrets: MockSecret[];
+  auditLogs: Array<{
+    timestamp: string;
+    server_id: string;
+    secret_id: string;
+    source: string;
+    status: { type: "Success" } | { type: "Error"; message: string };
+  }>;
   vault: MockVault;
   autostart: boolean;
   autostartSupported: boolean;
@@ -50,6 +57,7 @@ export function defaultMockState(overrides: Partial<MockState> = {}): MockState 
   return {
     servers: [],
     secrets: [],
+    auditLogs: [],
     vault: { backend: "keychain", exists: true, unlocked: true },
     autostart: false,
     autostartSupported: true,
@@ -124,7 +132,7 @@ export async function installTauriMock(
                   }
                 : { type: "Local" },
             enabled: true,
-            trusted: false,
+            trusted: (args.trusted as boolean | undefined) ?? false,
             created_at: nowIso(),
             updated_at: nowIso(),
           };
@@ -198,6 +206,8 @@ export async function installTauriMock(
             managed_count: s.servers.length,
             preserved_count: 0,
           };
+        case "list_audit_logs":
+          return s.auditLogs.slice(0, (args.limit as number | undefined) ?? 50);
 
         // ---------- Autostart plugin ----------
         case "plugin:autostart|is_enabled":
@@ -251,6 +261,15 @@ export function populatedState(): MockState {
         id: "openai-key",
         label: "OpenAI API Key",
         source: { type: "OnePassword", reference: "op://Personal/OpenAI/key" },
+      },
+    ],
+    auditLogs: [
+      {
+        timestamp: "2025-01-01T00:00:00Z",
+        server_id: "github",
+        secret_id: "github-pat",
+        source: "Local",
+        status: { type: "Success" },
       },
     ],
   });

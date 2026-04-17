@@ -20,7 +20,7 @@ Mode 2: Docker Sandbox (optional, isolated)
     → token expires, API shuts down
 ```
 
-**Multi-client config generation**: Generates MCP config for Claude Desktop, Codex (TOML), Cursor, VS Code, Windsurf.
+**Multi-client config generation**: Generates MCP config for Codex Desktop, Codex (TOML), Cursor, VS Code, Windsurf.
 
 ## Tech Stack
 
@@ -197,7 +197,7 @@ Three backends:
 
 | Client | Config File | Format |
 |--------|-------------|--------|
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | JSON (`mcpServers` object) |
+| Codex Desktop | `~/Library/Application Support/Codex/claude_desktop_config.json` | JSON (`mcpServers` object) |
 | Codex | `~/.codex/config.toml` | TOML (`[mcp_servers.id]` tables) |
 | Cursor | `~/.cursor/mcp.json` | JSON (`mcpServers` object) |
 | VS Code | `.vscode/mcp.json` | JSON (`servers` object, `type: "stdio"`) |

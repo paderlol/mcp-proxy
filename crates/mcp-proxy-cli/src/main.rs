@@ -12,6 +12,7 @@
 mod docker;
 
 use clap::{Parser, Subcommand};
+use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
 use mcp_proxy_common::models::{McpServerConfig, RunMode, SecretMeta};
 use mcp_proxy_common::secret_resolver::resolve_secret;
 use mcp_proxy_common::store::{app_data_dir, load_json, secrets_meta_path, servers_path};
@@ -164,7 +165,25 @@ fn run_server(server_id: &str) -> Result<(), String> {
             mapping.env_var_name
         );
 
-        let value = runtime.block_on(resolve_secret(&meta.id, &meta.source))?;
+        let resolved = runtime.block_on(resolve_secret(&meta.id, &meta.source));
+        let source_name = match &meta.source {
+            mcp_proxy_common::models::SecretSource::Local => "Local",
+            mcp_proxy_common::models::SecretSource::OnePassword { .. } => "OnePassword",
+        };
+        let status = match &resolved {
+            Ok(_) => AuditStatus::Success,
+            Err(err) => AuditStatus::Error(err.clone()),
+        };
+        if let Err(err) = append_audit_log(&AuditLogEntry {
+            timestamp: chrono::Utc::now(),
+            server_id: config.id.clone(),
+            secret_id: meta.id.clone(),
+            source: source_name.to_string(),
+            status,
+        }) {
+            tracing::warn!("failed to append audit log: {err}");
+        }
+        let value = resolved?;
         env_vars.insert(mapping.env_var_name.clone(), value);
     }
 

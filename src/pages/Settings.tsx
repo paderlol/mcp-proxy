@@ -12,6 +12,8 @@ import {
   KeyRound,
   Trash2,
   Clock,
+  RefreshCw,
+  FileClock,
 } from "lucide-react";
 import { useVault } from "../hooks/useVault";
 import {
@@ -19,6 +21,8 @@ import {
   useVaultIdleTimeout,
 } from "../hooks/useVaultIdleTimeout";
 import { useAutostart } from "../hooks/useAutostart";
+import { listAuditLogs } from "../lib/tauri";
+import type { AuditLogEntry } from "../lib/types";
 
 export function Settings() {
   const { status, busy, error, refresh, unlock, lock, changePassword, reset } =
@@ -40,10 +44,17 @@ export function Settings() {
   // reset confirmation
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    void refreshAuditLogs();
+  }, []);
 
   const isKeychain = status?.backend === "keychain";
   const showVaultCard = status && !isKeychain;
@@ -105,6 +116,29 @@ export function Settings() {
 
   const inputClass =
     "w-full bg-bg-elevated text-text-primary rounded-[500px] px-4 py-2.5 text-sm outline-none border border-transparent focus:border-border-default shadow-[rgb(18,18,18)_0px_1px_0px,rgb(124,124,124)_0px_0px_0px_1px_inset] placeholder:text-text-secondary/50";
+
+  async function refreshAuditLogs() {
+    setAuditBusy(true);
+    setAuditError(null);
+    try {
+      const entries = await listAuditLogs(50);
+      setAuditLogs(entries);
+    } catch (err) {
+      setAuditError(String(err));
+    } finally {
+      setAuditBusy(false);
+    }
+  }
+
+  const formatAuditTime = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
 
   return (
     <MainContent
@@ -172,6 +206,79 @@ export function Settings() {
               </Badge>
             </div>
           </div>
+        </Card>
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-text-primary">
+                Audit Log
+              </h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Recent secret-resolution activity recorded by the CLI. Secret
+                values are never stored here.
+              </p>
+            </div>
+            <PillButton
+              variant="outlined"
+              onClick={() => void refreshAuditLogs()}
+              disabled={auditBusy}
+            >
+              <RefreshCw size={12} className="mr-1" />
+              {auditBusy ? "Refreshing..." : "Refresh"}
+            </PillButton>
+          </div>
+
+          {auditError ? (
+            <p className="text-xs text-negative flex items-center gap-1">
+              <AlertTriangle size={12} />
+              {auditError}
+            </p>
+          ) : auditLogs.length === 0 ? (
+            <div className="flex items-center gap-3 py-4 text-text-secondary">
+              <FileClock size={18} className="text-text-secondary/60" />
+              <p className="text-sm">
+                No audit log entries yet. Entries appear after an AI client
+                launches <code className="text-text-bright">mcp-proxy run</code>.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {auditLogs.map((entry, index) => (
+                <div
+                  key={`${entry.timestamp}:${entry.server_id}:${entry.secret_id}:${index}`}
+                  className="rounded-lg border border-border-default/30 bg-bg-elevated p-3"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+                    <p className="text-sm font-bold text-text-primary">
+                      {entry.server_id}
+                    </p>
+                    <Badge
+                      variant={
+                        entry.status.type === "Success" ? "success" : "warning"
+                      }
+                    >
+                      {entry.status.type === "Success" ? "Success" : "Error"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-text-secondary">
+                    Secret:{" "}
+                    <code className="text-text-bright">{entry.secret_id}</code>
+                    <span className="mx-2">·</span>
+                    Source: {entry.source}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {formatAuditTime(entry.timestamp)}
+                  </p>
+                  {entry.status.type === "Error" && (
+                    <p className="text-xs text-warning mt-2">
+                      {entry.status.message}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* Vault control — only for encrypted-file backend */}
