@@ -55,3 +55,10 @@ export interface WriteConfigResult {
   managed_count: number;
   preserved_count: number;
 }
+
+export interface VaultStatus {
+  /** "keychain" on macOS, "encrypted-file" otherwise */
+  backend: "keychain" | "encrypted-file";
+  exists: boolean;
+  unlocked: boolean;
+}

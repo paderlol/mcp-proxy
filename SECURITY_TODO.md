@@ -34,10 +34,22 @@ Known security gaps to address in future iterations.
 - **Fix**: Enable Tauri's macOS code signing in build pipeline. Verify agent binary hash before copying to Docker image.
 - **Files**: `src-tauri/tauri.conf.json`, CI/CD config
 
-### 6. EncryptedFile Backend Implementation
-- **Risk**: Currently a TODO stub — users selecting "Local" storage get an error
-- **Fix**: Implement AES-256-GCM encryption with Argon2 key derivation from master password
-- **Files**: `src-tauri/src/commands/secrets.rs`
+### 6. EncryptedFile Backend Implementation ✅ shipped (MVP)
+- **Status**: Implemented in [crates/mcp-proxy-common/src/vault.rs](crates/mcp-proxy-common/src/vault.rs) —
+  AES-256-GCM cipher, 32-byte key derived via Argon2id (19 MiB / 2 iters / 1 lane),
+  single-blob JSON plaintext, atomic writes, 12 unit tests.
+- **Known residual risks / follow-ups**:
+  - `MCP_PROXY_MASTER_PASSWORD` env var is required for the CLI path (so
+    `mcp-proxy run` can unlock without prompts). It leaks via
+    `/proc/PID/environ` on Linux. A future task could add a session-file
+    handshake between the GUI and CLI to avoid the env var.
+  - No idle auto-lock. Vault stays unlocked until explicit Lock, process
+    exit, or crash. Future: lock after N minutes of UI idle.
+  - No "change master password" or "reset vault" flows. Reset = delete
+    `vault.bin` (data loss).
+  - macOS users keep using Keychain; there is no UI to opt into the vault
+    on macOS yet.
+- **Files**: `crates/mcp-proxy-common/src/{vault,local_backend}.rs`, `src-tauri/src/commands/vault.rs`, `src/pages/Settings.tsx`
 
 ## Low Priority
 
