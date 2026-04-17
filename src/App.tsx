@@ -9,6 +9,7 @@ import { Settings } from "./pages/Settings";
 import { useVault } from "./hooks/useVault";
 import { useIdleLock } from "./hooks/useIdleLock";
 import { useVaultIdleTimeout } from "./hooks/useVaultIdleTimeout";
+import { useVaultStatusSync } from "./hooks/useVaultStatusSync";
 
 function App() {
   const { refresh: refreshVault } = useVault();
@@ -19,6 +20,8 @@ function App() {
   useEffect(() => {
     refreshVault();
   }, [refreshVault]);
+
+  useVaultStatusSync();
 
   // Arms the idle-lock timer whenever the vault is unlocked. The hook
   // guards itself on backend/unlocked/timeout, so calling it here is safe

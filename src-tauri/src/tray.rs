@@ -59,6 +59,9 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, event: tauri::menu::MenuEvent) 
         MENU_SHOW => show_main_window(app),
         MENU_LOCK_VAULT => {
             local_backend::lock_vault();
+            if let Err(e) = crate::vault_events::emit(app) {
+                tracing::warn!("failed to emit vault-status event after tray lock: {e}");
+            }
             tracing::info!("vault locked via tray");
         }
         MENU_QUIT => {

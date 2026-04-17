@@ -6,6 +6,7 @@ interface VaultStore {
   status: VaultStatus | null;
   busy: boolean;
   error: string | null;
+  setStatus: (status: VaultStatus) => void;
 
   /** Fetch the current vault status from the backend. */
   refresh: () => Promise<void>;
@@ -23,6 +24,7 @@ export const useVault = create<VaultStore>((set, get) => ({
   status: null,
   busy: false,
   error: null,
+  setStatus: (status) => set({ status, error: null }),
 
   refresh: async () => {
     try {

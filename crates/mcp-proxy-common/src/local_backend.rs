@@ -313,6 +313,12 @@ fn delete_keychain(id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_os = "macos"))]
+    use crate::store::DATA_DIR_ENV;
+    #[cfg(not(target_os = "macos"))]
+    use std::fs;
+    #[cfg(not(target_os = "macos"))]
+    use std::sync::Mutex;
 
     #[test]
     #[cfg(target_os = "macos")]
@@ -359,5 +365,96 @@ mod tests {
             .unwrap();
         let err = rt.block_on(get_local("whatever")).unwrap_err();
         assert!(err.to_lowercase().contains("vault is locked"), "got: {err}");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[cfg(not(target_os = "macos"))]
+    fn with_temp_profile<F: FnOnce()>(f: F) {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let data_dir = tempfile::tempdir().unwrap();
+        let runtime_dir = tempfile::tempdir().unwrap();
+        let prev_data = std::env::var(DATA_DIR_ENV).ok();
+        let prev_runtime = std::env::var("XDG_RUNTIME_DIR").ok();
+
+        unsafe {
+            std::env::set_var(DATA_DIR_ENV, data_dir.path());
+            std::env::set_var("XDG_RUNTIME_DIR", runtime_dir.path());
+        }
+
+        lock_vault();
+        f();
+        lock_vault();
+
+        unsafe {
+            match prev_data {
+                Some(v) => std::env::set_var(DATA_DIR_ENV, v),
+                None => std::env::remove_var(DATA_DIR_ENV),
+            }
+            match prev_runtime {
+                Some(v) => std::env::set_var("XDG_RUNTIME_DIR", v),
+                None => std::env::remove_var("XDG_RUNTIME_DIR"),
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn reset_vault_deletes_vault_file_and_session() {
+        with_temp_profile(|| {
+            unlock_vault("pw1").unwrap();
+            assert!(
+                vault_path().exists(),
+                "vault file should exist after unlock"
+            );
+            assert!(
+                session::session_path().exists(),
+                "session file should exist after unlock"
+            );
+
+            reset_vault().unwrap();
+
+            assert!(!vault_path().exists(), "reset should remove vault.bin");
+            assert!(
+                !session::session_path().exists(),
+                "reset should remove the vault session file"
+            );
+            assert!(!is_unlocked(), "vault should be locked after reset");
+        });
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn change_password_rotates_session_and_invalidates_old_password() {
+        with_temp_profile(|| {
+            unlock_vault("pw1").unwrap();
+            set_local("api-key", "secret").unwrap();
+            let session_before = fs::read(session::session_path()).unwrap();
+
+            change_password("pw2").unwrap();
+
+            let session_after = fs::read(session::session_path()).unwrap();
+            assert_ne!(
+                session_before, session_after,
+                "password rotation should refresh the session file"
+            );
+
+            lock_vault();
+            let old_password_err = unlock_vault("pw1").unwrap_err();
+            assert!(
+                old_password_err.contains("wrong master password")
+                    || old_password_err.contains("modified"),
+                "expected old password to stop working, got: {old_password_err}"
+            );
+
+            unlock_vault("pw2").unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let value = rt.block_on(get_local("api-key")).unwrap();
+            assert_eq!(value, "secret");
+        });
     }
 }
