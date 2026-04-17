@@ -44,9 +44,9 @@ cargo tauri build               # Production build (DMG)
 npm run build                   # Frontend only build
 
 
-# Test — Rust (70 tests)
+# Test — Rust (72 tests)
 cargo test --workspace
-cargo test -p mcp-proxy-common   # 9 unit + 12 vault = 21 tests
+cargo test -p mcp-proxy-common   # 9 unit + 14 vault = 23 tests
 cargo test -p mcp-proxy-cli      # 13 docker unit + 10 CLI integ + 2 stdio E2E
 cargo test -p mcp-proxy          # 6 config + 18 client_write = 24 tests
 

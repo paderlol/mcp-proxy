@@ -148,6 +148,44 @@ pub fn lock_vault() {
     }
 }
 
+/// Rotate the vault's master password. Requires the vault to already be
+/// unlocked (session populated) so we know the current password works.
+/// On macOS this is a no-op — Keychain uses the OS login password, which
+/// users change via System Settings, not through this app.
+pub fn change_password(new_password: &str) -> Result<(), String> {
+    if matches!(default_backend(), LocalBackend::Keychain) {
+        return Err(
+            "Password rotation is a no-op on macOS — the Keychain backend \
+             inherits your login password. Use System Settings to change it."
+                .to_string(),
+        );
+    }
+    let mut guard = session().lock().map_err(|e| e.to_string())?;
+    match guard.as_mut() {
+        Some(v) => v.change_password(new_password).map_err(|e| e.to_string()),
+        None => {
+            Err("vault must be unlocked before changing the password — unlock first".to_string())
+        }
+    }
+}
+
+/// Delete the vault file on disk. Also zeros the in-memory session. Caller
+/// is expected to have confirmed with the user first (data loss).
+/// No-op on macOS (nothing to delete).
+pub fn reset_vault() -> Result<(), String> {
+    if matches!(default_backend(), LocalBackend::Keychain) {
+        return Ok(());
+    }
+    // Drop session first so any subsequent access requires re-unlock.
+    lock_vault();
+    let path = vault_path();
+    if path.exists() {
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("failed to delete vault file {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// Run a closure with the unlocked vault. Returns an error if locked.
 fn with_vault<F, T>(f: F) -> Result<T, String>
 where

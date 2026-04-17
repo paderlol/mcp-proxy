@@ -62,3 +62,6 @@ export const vaultStatus = () => invoke<VaultStatus>("vault_status");
 export const unlockVault = (password: string) =>
   invoke<void>("unlock_vault", { password });
 export const lockVault = () => invoke<void>("lock_vault");
+export const changeVaultPassword = (newPassword: string) =>
+  invoke<void>("change_vault_password", { newPassword });
+export const resetVault = () => invoke<void>("reset_vault");
