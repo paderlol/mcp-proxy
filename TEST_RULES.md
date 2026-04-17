@@ -6,7 +6,7 @@ Testing policy for the MCP Proxy project — what's been verified, what's requir
 
 ## 1. Current State
 
-**92 automated tests** (78 Rust + 14 frontend) covering critical paths across the CLI, shared data model, Tauri config generation, client-config write logic, Docker sandbox generation, AES-256-GCM vault, and frontend utilities. All green on macOS.
+**102 automated tests** (78 Rust + 14 frontend unit + 10 Playwright E2E) covering critical paths across the CLI, shared data model, Tauri config generation, client-config write logic, Docker sandbox generation, AES-256-GCM vault, frontend utilities, and user-facing React flows (Dashboard / Servers / Secrets). Rust + Vitest are green on macOS; Playwright specs are primarily verified in CI (Ubuntu runner) — see [§7 CI/CD](#7-cicd).
 
 ### Rust tests (run with `cargo test --workspace`)
 
@@ -26,6 +26,18 @@ Testing policy for the MCP Proxy project — what's been verified, what's requir
 | Suite | Count | File | What it proves |
 |-------|-------|------|----------------|
 | `registry` data + filter | 14 | [src/data/\_\_tests\_\_/registry.test.ts](src/data/__tests__/registry.test.ts) | Unique IDs / non-empty publisher / env var spec integrity; `filterEntries` works for region + name + publisher + tag + id + description; case-insensitive; whitespace-safe; cross-region isolation |
+
+### E2E tests (run with `npm run test:e2e`)
+
+Playwright driving Chromium against the Vite dev build, with `window.__TAURI_INTERNALS__.invoke` mocked by an in-memory router. See [tests/e2e/setup.ts](tests/e2e/setup.ts).
+
+| Suite | Count | File | What it proves |
+|-------|-------|------|----------------|
+| Dashboard | 2 | [tests/e2e/dashboard.spec.ts](tests/e2e/dashboard.spec.ts) | Empty state shows "No MCP servers" hint + live indicator; populated state renders server name + env-mapping badge from mocked `list_servers` / `list_secrets` |
+| Servers | 4 | [tests/e2e/servers.spec.ts](tests/e2e/servers.spec.ts) | Add server via modal round-trips through `add_server` → `list_servers`; edit updates command; delete empties list; search filters |
+| Secrets | 4 | [tests/e2e/secrets.spec.ts](tests/e2e/secrets.spec.ts) | Add Local secret, add 1Password reference (no value input), delete, search |
+
+> **Local runs**: `npx playwright install chromium` pulls a ~150 MB browser build. If your network blocks or throttles `playwright.download.localhost.run`, expect a long first-time install; subsequent runs are fully offline. CI does this with a `~/.cache/ms-playwright` cache keyed on `package-lock.json`, so most CI runs are cached.
 
 ### Previously verified manually (now covered by automation)
 
@@ -124,6 +136,12 @@ Visual changes to components used in multiple pages (`Modal`, `PillButton`, `Car
 
 For font-size or padding changes, also capture a `preview_inspect` of the computed `height`/`padding` to prove no regression.
 
+### 3.7 New React page / modal / form → Playwright E2E spec
+
+Non-trivial frontend changes (a new page, new form field, new modal, new user flow) must add or update a spec under `tests/e2e/`. The contract: use the existing `installTauriMock` + `MockState` helpers, prefer role/placeholder-based selectors over CSS, and round-trip through at least one mutation (add/edit/delete) to catch wiring breakage.
+
+When you change a selector an existing spec relies on (renaming a placeholder, changing a button label), update the spec in the same PR. A test that fails because the selector drifted silently is a worse signal than no test at all.
+
 ### 3.6 New Tauri command → smoke test
 
 Adding a `#[tauri::command]` fn requires at least:
@@ -184,6 +202,11 @@ cargo test --workspace -- --nocapture
 npm test            # run once
 npm run test:watch  # watch mode for dev
 
+# Frontend E2E — Playwright (10 specs against mocked Tauri invoke)
+npx playwright install chromium               # one-time browser install (~150 MB)
+npm run test:e2e                              # headless run
+npm run test:e2e:ui                           # interactive debugger UI
+
 # Compile check only (fastest, no tests executed)
 cargo check --workspace
 
@@ -243,8 +266,15 @@ GitHub Actions workflow at [.github/workflows/ci.yml](.github/workflows/ci.yml) 
 
 Concurrency is set to cancel older runs of the same branch when a new push arrives.
 
+**Frontend E2E job** (ubuntu-latest):
+1. `npm ci`
+2. Cache `~/.cache/ms-playwright` keyed on `package-lock.json`
+3. `npx playwright install --with-deps chromium`
+4. `npm run test:e2e` (Playwright against the Vite dev server with Tauri invoke mocked)
+5. On failure: upload `playwright-report/` as an artifact
+
 **Not yet in CI**:
-- Playwright / Tauri in-app end-to-end test (needs a headful / Xvfb setup)
+- Real Tauri in-app end-to-end via `tauri-driver` (needs a headful / Xvfb setup + platform-specific drivers)
 - `cargo test -p mcp-proxy-cli -- --ignored docker` (requires Docker in the runner)
 
 ---
@@ -265,7 +295,7 @@ A test that fails once out of 20 runs is banned from the suite — either fix it
 6. ✅ ~~`filterEntries()` frontend unit test + Vitest bootstrap~~ — [src/data/\_\_tests\_\_/registry.test.ts](src/data/__tests__/registry.test.ts)
 7. **Tauri `add_server` / `set_secret` / `delete_secret` unit tests** — use `State<AppState>` with fixture state; requires figuring out `tauri::test::mock_app()` or similar.
 8. **`generate_config` integration through the Tauri command** — today only the pure helpers are tested; cover the `State<AppState>`-taking async command too.
-9. **React component tests** — start with Modal (open/close/ESC) and the Env Mapping editor (add/remove rows). Needs `@testing-library/react` + jsdom.
+9. ✅ ~~React UI tests~~ — Playwright E2E covers Dashboard / Servers / Secrets with mocked Tauri invoke. Next spec targets: Config page (one-click write + backup flow) and Settings (vault unlock / change-password / autostart).
 10. **Zustand store tests** — `useServers` / `useSecrets` with mocked `invoke`; catches logic bugs in optimistic updates and error handling.
 11. ✅ ~~CI pipeline~~ — [.github/workflows/ci.yml](.github/workflows/ci.yml) runs fmt + clippy + test + build on every push / PR to `main`.
 12. **Docker sandbox integration test** — currently gated behind `#[ignore]`. Enable in a CI job that has Docker, or write as a shell script under `scripts/` so it runs on manual request.
