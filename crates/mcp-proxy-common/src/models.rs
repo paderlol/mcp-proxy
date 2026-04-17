@@ -218,12 +218,8 @@ mod tests {
 
     #[test]
     fn mcp_server_config_round_trips_with_first_launched_at() {
-        let mut config = McpServerConfig::new(
-            "t".to_string(),
-            "npx".to_string(),
-            vec![],
-            Transport::Stdio,
-        );
+        let mut config =
+            McpServerConfig::new("t".to_string(), "npx".to_string(), vec![], Transport::Stdio);
         let ts: DateTime<Utc> = "2026-04-17T10:00:00Z".parse().unwrap();
         config.first_launched_at = Some(ts);
         let json = serde_json::to_string(&config).unwrap();

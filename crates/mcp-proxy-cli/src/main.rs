@@ -15,7 +15,9 @@ use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
 use mcp_proxy_common::models::{McpServerConfig, RunMode, SecretMeta};
 use mcp_proxy_common::secret_resolver::resolve_secret;
-use mcp_proxy_common::store::{app_data_dir, load_json, save_json, secrets_meta_path, servers_path};
+use mcp_proxy_common::store::{
+    app_data_dir, load_json, save_json, secrets_meta_path, servers_path,
+};
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 
@@ -242,8 +244,8 @@ fn run_server(server_id: &str) -> Result<(), String> {
 /// field is already populated (e.g., a concurrent run beat us to it).
 fn record_first_launch(server_id: &str) -> Result<(), String> {
     let path = servers_path();
-    let mut servers: Vec<McpServerConfig> =
-        load_json(&path).ok_or_else(|| "servers.json vanished between load and write".to_string())?;
+    let mut servers: Vec<McpServerConfig> = load_json(&path)
+        .ok_or_else(|| "servers.json vanished between load and write".to_string())?;
 
     let mut changed = false;
     for s in &mut servers {
