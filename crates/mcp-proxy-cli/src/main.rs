@@ -70,20 +70,49 @@ fn main() {
 fn run_server(server_id: &str) -> Result<(), String> {
     // 0. On non-macOS platforms the "Local" secret backend is an encrypted
     //    vault that needs unlocking before any read. AI clients launching us
-    //    can't prompt for a password, so we take the master password from
-    //    an env var. On macOS this block is compiled out — Keychain just works.
+    //    can't prompt for a password, so we try two sources in order:
+    //
+    //      1. A session file written by the GUI at unlock time (preferred —
+    //         no /proc env-var leak, lifetime bound to GUI session).
+    //      2. `MCP_PROXY_MASTER_PASSWORD` env var (fallback for headless
+    //         setups or users who haven't launched the GUI this session).
+    //
+    //    On macOS this block is compiled out — Keychain just works.
     #[cfg(not(target_os = "macos"))]
     {
         use mcp_proxy_common::local_backend;
         if local_backend::vault_exists() && !local_backend::is_unlocked() {
-            match std::env::var("MCP_PROXY_MASTER_PASSWORD") {
-                Ok(pw) => local_backend::unlock_vault(&pw)?,
-                Err(_) => {
-                    return Err(
-                        "Local vault is locked. Set MCP_PROXY_MASTER_PASSWORD before \
-                         invoking mcp-proxy, or switch the server's secrets to 1Password."
-                            .to_string(),
-                    );
+            // Session file fast path.
+            match local_backend::unlock_from_session() {
+                Ok(true) => { /* loaded from session */ }
+                Ok(false) => {
+                    // No session on disk — fall back to env var.
+                    match std::env::var("MCP_PROXY_MASTER_PASSWORD") {
+                        Ok(pw) => local_backend::unlock_vault(&pw)?,
+                        Err(_) => {
+                            return Err(
+                                "Local vault is locked. Unlock the vault in the MCP Proxy \
+                                 desktop app, or set MCP_PROXY_MASTER_PASSWORD before invoking \
+                                 mcp-proxy."
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+                Err(_e) => {
+                    // Stale session (password rotated, vault missing, etc.).
+                    // Fall through to env var.
+                    tracing::warn!("stale session file; falling back to env var");
+                    match std::env::var("MCP_PROXY_MASTER_PASSWORD") {
+                        Ok(pw) => local_backend::unlock_vault(&pw)?,
+                        Err(_) => {
+                            return Err(
+                                "Local vault session expired. Unlock the vault again in the \
+                                 MCP Proxy desktop app, or set MCP_PROXY_MASTER_PASSWORD."
+                                    .to_string(),
+                            );
+                        }
+                    }
                 }
             }
         }

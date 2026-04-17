@@ -10,9 +10,11 @@
 //! Callers never need to know which backend is active. The choice is made by
 //! [`default_backend`] at compile time via `cfg(target_os)`.
 
+use crate::session;
 use crate::vault::Vault;
 use crate::KEYCHAIN_SERVICE;
 use std::sync::{Mutex, OnceLock};
+use zeroize::Zeroizing;
 
 /// Which concrete backend `Local` resolves to on this platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,7 +98,7 @@ pub fn delete_local(id: &str) -> Result<(), String> {
 // is stored here. `unlock_vault` populates it; `lock_vault` or process exit
 // drops it (`Vault`'s key field is `Zeroizing`, so memory is scrubbed).
 
-fn session() -> &'static Mutex<Option<Vault>> {
+fn session_cell() -> &'static Mutex<Option<Vault>> {
     static CELL: OnceLock<Mutex<Option<Vault>>> = OnceLock::new();
     CELL.get_or_init(|| Mutex::new(None))
 }
@@ -120,10 +122,19 @@ pub fn is_unlocked() -> bool {
     if matches!(default_backend(), LocalBackend::Keychain) {
         return true;
     }
-    session().lock().ok().map(|g| g.is_some()).unwrap_or(false)
+    session_cell()
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
 }
 
 /// Unlock the vault (create it if missing). On macOS this is a no-op.
+///
+/// On success, also persists the derived key to a user-private session
+/// file so the CLI can unlock without the `MCP_PROXY_MASTER_PASSWORD`
+/// env var. The session file is deleted on [`lock_vault`], password
+/// rotation, or vault reset.
 pub fn unlock_vault(password: &str) -> Result<(), String> {
     if matches!(default_backend(), LocalBackend::Keychain) {
         return Ok(());
@@ -136,16 +147,69 @@ pub fn unlock_vault(password: &str) -> Result<(), String> {
     }
     .map_err(|e| e.to_string())?;
 
-    let mut guard = session().lock().map_err(|e| e.to_string())?;
+    // Persist the derived key so the CLI can find it without the user re-
+    // typing or exporting the password as an env var.
+    if let Err(e) = session::write(vault.key_bytes(), vault.salt()) {
+        tracing::warn!("failed to persist vault session file: {e}");
+    }
+
+    let mut guard = session_cell().lock().map_err(|e| e.to_string())?;
     *guard = Some(vault);
     Ok(())
 }
 
-/// Clear the in-memory vault session (zeroizes the derived key). No-op on macOS.
+/// Try to unlock using the session file written by a previous GUI unlock.
+/// Returns `Ok(true)` if a valid session was found and loaded, `Ok(false)`
+/// if there is no session file (caller should fall back to password
+/// unlock). Returns an error if the session file exists but doesn't match
+/// the current vault (stale after password rotation).
+///
+/// Intended for the CLI happy path: check once at startup before prompting
+/// for a password.
+pub fn unlock_from_session() -> Result<bool, String> {
+    if matches!(default_backend(), LocalBackend::Keychain) {
+        return Ok(true); // nothing to do; treat as "already unlocked"
+    }
+    let Some((key_bytes, session_salt)) = session::read() else {
+        return Ok(false);
+    };
+
+    let path = vault_path();
+    if !Vault::exists(&path) {
+        // Session points at a vault that no longer exists — stale.
+        session::delete();
+        return Ok(false);
+    }
+
+    // `open_with_key` verifies the key decrypts the file (via GCM auth).
+    let key = Zeroizing::new(*key_bytes);
+    let vault = Vault::open_with_key(path, key).map_err(|e| {
+        // Session didn't match the current vault — most likely password was
+        // rotated elsewhere. Wipe the stale session and ask the caller to
+        // fall back to password.
+        session::delete();
+        e.to_string()
+    })?;
+
+    // Double-check the salt recorded in the session still matches the vault
+    // on disk (defense in depth against weird edge cases).
+    if vault.salt() != &session_salt {
+        session::delete();
+        return Err("session file does not match current vault (stale).".into());
+    }
+
+    let mut guard = session_cell().lock().map_err(|e| e.to_string())?;
+    *guard = Some(vault);
+    Ok(true)
+}
+
+/// Clear the in-memory vault session (zeroizes the derived key) and
+/// delete the session file. No-op on macOS.
 pub fn lock_vault() {
-    if let Ok(mut guard) = session().lock() {
+    if let Ok(mut guard) = session_cell().lock() {
         *guard = None;
     }
+    session::delete();
 }
 
 /// Rotate the vault's master password. Requires the vault to already be
@@ -160,13 +224,20 @@ pub fn change_password(new_password: &str) -> Result<(), String> {
                 .to_string(),
         );
     }
-    let mut guard = session().lock().map_err(|e| e.to_string())?;
-    match guard.as_mut() {
-        Some(v) => v.change_password(new_password).map_err(|e| e.to_string()),
-        None => {
-            Err("vault must be unlocked before changing the password — unlock first".to_string())
-        }
+    let mut guard = session_cell().lock().map_err(|e| e.to_string())?;
+    let vault = guard.as_mut().ok_or_else(|| {
+        "vault must be unlocked before changing the password — unlock first".to_string()
+    })?;
+    vault
+        .change_password(new_password)
+        .map_err(|e| e.to_string())?;
+
+    // Refresh the on-disk session file with the new derived key so the CLI
+    // can keep unlocking without a password prompt.
+    if let Err(e) = session::write(vault.key_bytes(), vault.salt()) {
+        tracing::warn!("failed to refresh vault session file after password rotation: {e}");
     }
+    Ok(())
 }
 
 /// Delete the vault file on disk. Also zeros the in-memory session. Caller
@@ -191,7 +262,7 @@ fn with_vault<F, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(&Vault) -> Result<T, String>,
 {
-    let guard = session()
+    let guard = session_cell()
         .lock()
         .map_err(|e| format!("vault session lock poisoned: {e}"))?;
     match guard.as_ref() {

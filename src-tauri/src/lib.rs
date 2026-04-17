@@ -8,7 +8,7 @@ use store::AppState;
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
@@ -38,6 +38,16 @@ pub fn run() {
             commands::vault::change_vault_password,
             commands::vault::reset_vault,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| {
+        // Clean up the vault session file when the app exits normally.
+        // A force-kill or crash can still leave it behind; that's handled
+        // on the next launch via salt-mismatch detection in
+        // `unlock_from_session`.
+        if matches!(event, tauri::RunEvent::Exit) {
+            mcp_proxy_common::local_backend::lock_vault();
+        }
+    });
 }
