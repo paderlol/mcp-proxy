@@ -68,6 +68,27 @@ fn main() {
 }
 
 fn run_server(server_id: &str) -> Result<(), String> {
+    // 0. On non-macOS platforms the "Local" secret backend is an encrypted
+    //    vault that needs unlocking before any read. AI clients launching us
+    //    can't prompt for a password, so we take the master password from
+    //    an env var. On macOS this block is compiled out — Keychain just works.
+    #[cfg(not(target_os = "macos"))]
+    {
+        use mcp_proxy_common::local_backend;
+        if local_backend::vault_exists() && !local_backend::is_unlocked() {
+            match std::env::var("MCP_PROXY_MASTER_PASSWORD") {
+                Ok(pw) => local_backend::unlock_vault(&pw)?,
+                Err(_) => {
+                    return Err(
+                        "Local vault is locked. Set MCP_PROXY_MASTER_PASSWORD before \
+                         invoking mcp-proxy, or switch the server's secrets to 1Password."
+                            .to_string(),
+                    );
+                }
+            }
+        }
+    }
+
     // 1. Load server configs
     let servers: Vec<McpServerConfig> = load_json(servers_path()).ok_or_else(|| {
         format!(

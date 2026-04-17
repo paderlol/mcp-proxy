@@ -27,6 +27,9 @@ pub fn run() {
             commands::config::generate_config,
             commands::client_write::get_client_config_info,
             commands::client_write::write_client_config,
+            commands::vault::vault_status,
+            commands::vault::unlock_vault,
+            commands::vault::lock_vault,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

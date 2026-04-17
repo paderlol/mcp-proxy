@@ -6,6 +6,7 @@ import type {
   ProxyStatus,
   SecretEntry,
   SecretSource,
+  VaultStatus,
   WriteConfigResult,
 } from "./types";
 
@@ -64,3 +65,9 @@ export const getClientConfigInfo = (client: string) =>
   invoke<ClientConfigInfo>("get_client_config_info", { client });
 export const writeClientConfig = (client: string) =>
   invoke<WriteConfigResult>("write_client_config", { client });
+
+// Vault / Local-secret lifecycle
+export const vaultStatus = () => invoke<VaultStatus>("vault_status");
+export const unlockVault = (password: string) =>
+  invoke<void>("unlock_vault", { password });
+export const lockVault = () => invoke<void>("lock_vault");

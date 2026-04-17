@@ -6,13 +6,14 @@ Testing policy for the MCP Proxy project — what's been verified, what's requir
 
 ## 1. Current State
 
-**69 automated tests** (55 Rust + 14 frontend) covering critical paths across the CLI, shared data model, Tauri config generation, client-config write logic, Docker sandbox generation, and frontend utilities. All green on macOS.
+**84 automated tests** (70 Rust + 14 frontend) covering critical paths across the CLI, shared data model, Tauri config generation, client-config write logic, Docker sandbox generation, AES-256-GCM vault, and frontend utilities. All green on macOS.
 
 ### Rust tests (run with `cargo test --workspace`)
 
 | Suite | Count | File | What it proves |
 |-------|-------|------|----------------|
-| `mcp-proxy-common` unit | 6 | [crates/mcp-proxy-common/src/models.rs](crates/mcp-proxy-common/src/models.rs), [local_backend.rs](crates/mcp-proxy-common/src/local_backend.rs) | SecretSource serde round-trip + legacy `Keychain`/`EncryptedFile` alias; default server config; platform-correct local backend selection |
+| `mcp-proxy-common` unit | 9 | [crates/mcp-proxy-common/src/models.rs](crates/mcp-proxy-common/src/models.rs), [local_backend.rs](crates/mcp-proxy-common/src/local_backend.rs) | SecretSource serde round-trip + legacy `Keychain`/`EncryptedFile` alias; default server config; platform-correct local backend selection; macOS-specific `is_unlocked`/`unlock`/`lock` no-op behavior |
+| `mcp-proxy-common` vault | 12 | [crates/mcp-proxy-common/src/vault.rs](crates/mcp-proxy-common/src/vault.rs) | AES-GCM + Argon2id roundtrip; wrong password → generic WrongPasswordOrCorrupted (no info leak); tampered ciphertext / tampered salt / wrong magic / unknown version / truncated file all fail cleanly; fresh nonce per write; create refuses to overwrite; idempotent delete; multi-entry |
 | `mcp-proxy-cli` docker unit | 13 | [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) | Dockerfile has two stages / references user image / uses agent entrypoint; image tag is deterministic, content-hashed over image+command+args+agent source, independent of env_vars+extra_args; server-id sanitizer; build context writes Dockerfile + embedded agent source; rebuild is idempotent |
 | `mcp-proxy-cli` integration | 10 | [crates/mcp-proxy-cli/tests/cli_integration.rs](crates/mcp-proxy-cli/tests/cli_integration.rs) | `list`/`run`/`--help`/`--version`, all error paths (unknown/disabled/Docker-without-image/missing-secret/no-servers.json), success path |
 | `mcp-proxy-cli` E2E stdio | 2 | [crates/mcp-proxy-cli/tests/e2e_stdio_pipe.rs](crates/mcp-proxy-cli/tests/e2e_stdio_pipe.rs) | JSON-RPC `initialize` round-trips through `/bin/cat`; child inherits `PATH` |
@@ -164,11 +165,11 @@ Use for: real AI client integration, real MCP server traffic, cross-platform san
 ## 5. Running Tests
 
 ```bash
-# Rust — all crates (55 tests: unit + integration + E2E + config + client_write + docker)
+# Rust — all crates (70 tests: unit + integration + E2E + config + client_write + docker + vault)
 cargo test --workspace
 
 # Rust — single crate
-cargo test -p mcp-proxy-common           # 6 unit tests
+cargo test -p mcp-proxy-common           # 9 unit + 12 vault = 21 tests
 cargo test -p mcp-proxy-cli              # 13 docker unit + 10 integ + 2 E2E = 25
 cargo test -p mcp-proxy                  # 6 config + 18 client_write = 24 tests
 

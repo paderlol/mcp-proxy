@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { MainContent } from "../components/layout/MainContent";
 import { Card } from "../components/ui/Card";
 import { PillButton } from "../components/ui/PillButton";
@@ -6,8 +7,9 @@ import { SecretInput } from "../components/ui/SecretInput";
 import { SearchInput } from "../components/ui/SearchInput";
 import { Modal } from "../components/ui/Modal";
 import { Badge } from "../components/ui/Badge";
-import { Plus, KeyRound, Lock, Trash2, Pencil } from "lucide-react";
+import { Plus, KeyRound, Lock, Trash2, Pencil, AlertTriangle } from "lucide-react";
 import { useSecrets } from "../hooks/useSecrets";
+import { useVault } from "../hooks/useVault";
 import type { SecretEntry, SecretSource } from "../lib/types";
 
 type SourceType = "Local" | "OnePassword";
@@ -36,6 +38,7 @@ const sourceBadgeLabel: Record<string, string> = {
 export function SecretsManager() {
   const { secrets, fetchSecrets, addSecret, updateSecret, deleteSecret } =
     useSecrets();
+  const { status: vaultStatus, refresh: refreshVault } = useVault();
 
   const [showAdd, setShowAdd] = useState(false);
   // null = creating; non-null = editing this existing entry. The `id` and
@@ -51,7 +54,17 @@ export function SecretsManager() {
 
   useEffect(() => {
     fetchSecrets();
-  }, [fetchSecrets]);
+    refreshVault();
+  }, [fetchSecrets, refreshVault]);
+
+  // On macOS the vault is always "unlocked" (Keychain). On Linux/Windows, if
+  // the user tries to save a Local secret while the vault is locked we show
+  // an inline banner pointing to Settings instead of the value input.
+  const vaultBlocksLocal =
+    sourceType === "Local" &&
+    vaultStatus !== null &&
+    vaultStatus.backend === "encrypted-file" &&
+    !vaultStatus.unlocked;
 
   const resetForm = () => {
     setNewId("");
@@ -294,6 +307,29 @@ export function SecretsManager() {
                 className={`${inputClass} font-mono`}
               />
             </div>
+          ) : vaultBlocksLocal ? (
+            <div className="rounded-lg border border-warning/30 bg-bg-elevated p-3 flex items-start gap-2">
+              <AlertTriangle
+                size={14}
+                className="text-warning flex-shrink-0 mt-0.5"
+              />
+              <div className="text-xs text-text-secondary leading-relaxed">
+                <p className="text-text-primary font-bold mb-1">
+                  Local vault is locked
+                </p>
+                <p>
+                  Unlock or create the vault in{" "}
+                  <Link
+                    to="/settings"
+                    className="text-brand underline hover:brightness-110"
+                  >
+                    Settings
+                  </Link>{" "}
+                  before saving a Local secret. On Linux and Windows, Local
+                  secrets are protected by a master password you set once.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col gap-1.5">
               <SecretInput
@@ -324,7 +360,7 @@ export function SecretsManager() {
             <PillButton
               variant="brand"
               onClick={handleSave}
-              disabled={!newId || !newLabel || saving}
+              disabled={!newId || !newLabel || saving || vaultBlocksLocal}
             >
               {saving
                 ? "Saving..."
