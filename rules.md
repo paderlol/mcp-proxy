@@ -2,6 +2,8 @@
 
 This file defines the repository workflow for human contributors and coding agents. When any workflow guidance conflicts with `AGENTS.md` or `CLAUDE.md`, this file is the source of truth.
 
+Repository-local workflow rules in this file also override any generic agent defaults, including default branch prefixes from external tooling or session-level instructions.
+
 ## Default Collaboration Model
 
 - The canonical integration branch is `main`.
@@ -32,6 +34,7 @@ This file defines the repository workflow for human contributors and coding agen
 - Format: `<type>/<scope>-<short-description>`
 - Use lowercase letters, numbers, and hyphens only.
 - Keep names short and specific. Prefer the affected module or user-facing area as the scope.
+- Only the prefixes listed in `Which Branch To Use` are valid for this repository. Do not substitute other default prefixes such as `devops/`.
 - Good examples:
   - `feat/docker-sandbox-launch`
   - `fix/config-export-windsurf`
