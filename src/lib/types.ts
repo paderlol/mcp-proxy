@@ -56,3 +56,15 @@ export interface VaultStatus {
   exists: boolean;
   unlocked: boolean;
 }
+
+export type AuditLogStatus =
+  | { type: "Success" }
+  | { type: "Error"; message: string };
+
+export interface AuditLogEntry {
+  timestamp: string;
+  server_id: string;
+  secret_id: string;
+  source: string;
+  status: AuditLogStatus;
+}

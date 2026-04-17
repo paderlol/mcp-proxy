@@ -10,7 +10,7 @@ Run through this checklist whenever you cut a release, or whenever the CLI or co
 
 ## Prerequisites
 
-- macOS (Linux/Windows has limitations: Local secret storage stub, see SECURITY_TODO §6)
+- macOS (Linux/Windows still need broader end-to-end validation; see SECURITY_TODO §6)
 - `cargo tauri build` succeeded → `./target/release/mcp-proxy` exists and is executable
 - The AI client you're testing is installed
 
@@ -155,8 +155,8 @@ These still need a different kind of test or a different tool:
 
 - **Concurrent proxies** (two servers running at once) — worth spot-checking manually; not in this checklist yet
 - **Long-running sessions** (what happens after 1h of MCP traffic) — no test for this yet
-- **Docker sandbox mode** — not implemented in CLI; when it lands, add a parallel checklist here
-- **Linux / Windows `Local` backend** — stubbed; will need a separate checklist once AES-GCM vault is implemented
+- **Docker sandbox mode** — implemented in the CLI/runtime path, but this checklist has not yet been expanded with a dedicated sandbox validation section
+- **Linux / Windows `Local` backend** — implemented as an encrypted local vault path, but still needs a separate cross-platform checklist
 
 ---
 

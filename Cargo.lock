@@ -2434,6 +2434,7 @@ name = "mcp-proxy-cli"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
+ "chrono",
  "clap",
  "mcp-proxy-common",
  "predicates",

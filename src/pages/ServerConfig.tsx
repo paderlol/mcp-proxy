@@ -45,8 +45,10 @@ export function ServerConfig() {
   const [runMode, setRunMode] = useState<RunModeType>("Local");
   const [dockerImage, setDockerImage] = useState("");
   const [envMappings, setEnvMappings] = useState<EnvMapping[]>([]);
+  const [trusted, setTrusted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
+  const [pendingSave, setPendingSave] = useState(false);
 
   useEffect(() => {
     fetchServers();
@@ -61,9 +63,11 @@ export function ServerConfig() {
     setRunMode("Local");
     setDockerImage("");
     setEnvMappings([]);
+    setTrusted(false);
     setPrefillEntry(null);
     setEditingServer(null);
     setShowAdd(false);
+    setPendingSave(false);
   };
 
   const handleEdit = (server: McpServerConfig) => {
@@ -80,6 +84,7 @@ export function ServerConfig() {
       setDockerImage("");
     }
     setEnvMappings([...server.env_mappings]);
+    setTrusted(server.trusted);
     setPrefillEntry(null);
     setShowAdd(true);
   };
@@ -98,6 +103,7 @@ export function ServerConfig() {
         secret_ref: "",
       })),
     );
+    setTrusted(false);
     setPrefillEntry(entry);
     setShowAdd(true);
   };
@@ -123,7 +129,7 @@ export function ServerConfig() {
     setEnvMappings((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSave = async () => {
+  const persistServer = async () => {
     if (!name || !command) return;
     setSaving(true);
     try {
@@ -156,6 +162,7 @@ export function ServerConfig() {
                 }
               : { type: "Local" },
           env_mappings: validMappings,
+          trusted,
           updated_at: new Date().toISOString(),
         });
       } else {
@@ -167,12 +174,22 @@ export function ServerConfig() {
           runModeType: runMode === "DockerSandbox" ? "docker" : undefined,
           dockerImage: dockerImage || undefined,
           envMappings: validMappings,
+          trusted,
         });
       }
       resetForm();
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!name || !command) return;
+    if (!trusted) {
+      setPendingSave(true);
+      return;
+    }
+    await persistServer();
   };
 
   // Filtered servers based on the search box.
@@ -255,6 +272,9 @@ export function ServerConfig() {
                       </p>
                       <Badge>
                         {s.run_mode.type === "Local" ? "Local" : "Docker"}
+                      </Badge>
+                      <Badge variant={s.trusted ? "success" : "warning"}>
+                        {s.trusted ? "Trusted" : "Untrusted"}
                       </Badge>
                       {s.env_mappings.length > 0 && (
                         <Badge>
@@ -386,6 +406,35 @@ export function ServerConfig() {
                 SSE
               </PillButton>
             </div>
+          </div>
+
+          <div className="border-t border-border-default/30 pt-4">
+            <label className="text-sm text-text-secondary font-bold mb-2 block">
+              Trust Level
+            </label>
+            <div className="flex gap-2 mb-2">
+              <PillButton
+                variant={!trusted ? "dark" : "outlined"}
+                onClick={() => setTrusted(false)}
+                className="flex-1"
+              >
+                <ShieldAlert size={14} className="mr-1.5" />
+                Untrusted
+              </PillButton>
+              <PillButton
+                variant={trusted ? "brand" : "outlined"}
+                onClick={() => setTrusted(true)}
+                className="flex-1"
+              >
+                <ShieldCheck size={14} className="mr-1.5" />
+                Trusted
+              </PillButton>
+            </div>
+            <p className="text-xs text-text-secondary/60 px-1">
+              {trusted
+                ? "Marked as reviewed. This suppresses the untrusted-server warning."
+                : "Untrusted servers should be reviewed before you expose them to any AI client."}
+            </p>
           </div>
 
           <div className="border-t border-border-default/30 pt-4">
@@ -554,6 +603,87 @@ export function ServerConfig() {
         onClose={() => setShowRegistry(false)}
         onInstall={handleInstallFromRegistry}
       />
+
+      <Modal
+        open={pendingSave}
+        onClose={() => setPendingSave(false)}
+        title="Untrusted Server Warning"
+        size="md"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-warning/30 bg-bg-elevated p-3 flex items-start gap-2">
+            <ShieldAlert size={16} className="text-warning mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-text-primary">
+                This server is not verified
+              </p>
+              <p className="text-xs text-text-secondary mt-1">
+                If an AI client launches this server, it will run with access to
+                the secrets mapped below. Only continue if you trust the command
+                and its package source.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-text-primary">Server</p>
+            <div className="rounded-lg border border-border-default/30 bg-bg-elevated px-3 py-2">
+              <p className="text-sm text-text-primary font-bold">{name}</p>
+              <p className="text-xs text-text-secondary font-mono mt-1 break-all">
+                {command} {args}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-bold text-text-primary">
+              Secrets this server can access
+            </p>
+            {envMappings.filter((m) => m.env_var_name.trim() && m.secret_ref.trim())
+              .length === 0 ? (
+              <p className="text-xs text-text-secondary">
+                No secrets mapped yet.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {envMappings
+                  .filter((m) => m.env_var_name.trim() && m.secret_ref.trim())
+                  .map((mapping) => {
+                    const secret = secrets.find((s) => s.id === mapping.secret_ref);
+                    return (
+                      <li
+                        key={`${mapping.env_var_name}:${mapping.secret_ref}`}
+                        className="text-xs text-text-secondary"
+                      >
+                        <code className="text-text-bright font-bold">
+                          {mapping.env_var_name}
+                        </code>
+                        <span className="mx-2">→</span>
+                        <span>{secret?.label ?? mapping.secret_ref}</span>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <PillButton variant="outlined" onClick={() => setPendingSave(false)}>
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="brand"
+              onClick={async () => {
+                setPendingSave(false);
+                await persistServer();
+              }}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Continue Untrusted"}
+            </PillButton>
+          </div>
+        </div>
+      </Modal>
     </MainContent>
   );
 }

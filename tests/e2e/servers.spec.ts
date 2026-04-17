@@ -20,6 +20,10 @@ test.describe("Servers", () => {
       .fill("-y @modelcontextprotocol/server-github");
 
     await page.getByRole("button", { name: /save server/i }).click();
+    await expect(
+      page.getByRole("heading", { name: /untrusted server warning/i }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /continue untrusted/i }).click();
 
     // After save → modal closes, server appears as a card. "GitHub" can also
     // appear in the registry browser / hints elsewhere, so scope to the first
@@ -30,6 +34,29 @@ test.describe("Servers", () => {
     await expect(
       page.getByText("No MCP servers configured yet"),
     ).toBeHidden();
+  });
+
+  test("trusted server skips the warning modal", async ({ page }) => {
+    await installTauriMock(page, defaultMockState());
+    await page.goto("/servers");
+
+    await page.getByRole("button", { name: /add server/i }).click();
+    await page.getByPlaceholder("e.g., GitHub MCP").fill("Filesystem");
+    await page.getByPlaceholder("e.g., npx").fill("npx");
+    await page
+      .getByPlaceholder("e.g., -y @modelcontextprotocol/server-github")
+      .fill("-y @modelcontextprotocol/server-filesystem /tmp/demo");
+
+    await page.getByRole("button", { name: /^trusted$/i }).click();
+    await page.getByRole("button", { name: /save server/i }).click();
+
+    await expect(
+      page.getByRole("heading", { name: /untrusted server warning/i }),
+    ).toBeHidden();
+    await expect(
+      page.getByText("Filesystem", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(page.getByText("Trusted", { exact: true }).first()).toBeVisible();
   });
 
   test("edit server updates command", async ({ page }) => {
