@@ -15,7 +15,9 @@ use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
 use mcp_proxy_common::models::{McpServerConfig, RunMode, SecretMeta};
 use mcp_proxy_common::secret_resolver::resolve_secret;
-use mcp_proxy_common::store::{app_data_dir, load_json, secrets_meta_path, servers_path};
+use mcp_proxy_common::store::{
+    app_data_dir, load_json, save_json, secrets_meta_path, servers_path,
+};
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 
@@ -138,6 +140,18 @@ fn run_server(server_id: &str) -> Result<(), String> {
         return Err(format!("Server '{server_id}' is disabled"));
     }
 
+    // Trust gate: untrusted servers must be reviewed and marked Trusted in the
+    // desktop app before an AI client is allowed to launch them. Enforced here
+    // (before secret resolution) so untrusted configs never trigger a secret
+    // read or audit entry.
+    if !config.trusted {
+        return Err(format!(
+            "Server '{}' is not trusted. Review and mark it as Trusted in the \
+             MCP Proxy desktop app before launching it from an AI client.",
+            config.name
+        ));
+    }
+
     // 2. Load secret metadata
     let secret_metas: Vec<SecretMeta> = load_json(secrets_meta_path()).unwrap_or_default();
 
@@ -194,6 +208,14 @@ fn run_server(server_id: &str) -> Result<(), String> {
         env_vars.len()
     );
 
+    // Record the first successful launch timestamp. Observational only —
+    // failures here are logged but must not block the launch.
+    if config.first_launched_at.is_none() {
+        if let Err(err) = record_first_launch(&config.id) {
+            tracing::warn!("failed to record first_launched_at: {err}");
+        }
+    }
+
     // 4. Dispatch based on run mode
     match &config.run_mode {
         RunMode::Local => spawn_local(&config, env_vars),
@@ -215,6 +237,29 @@ fn run_server(server_id: &str) -> Result<(), String> {
             })
         }
     }
+}
+
+/// Re-read `servers.json`, stamp `first_launched_at` on the matching entry if
+/// still unset, and write back. Idempotent: returns Ok without writing if the
+/// field is already populated (e.g., a concurrent run beat us to it).
+fn record_first_launch(server_id: &str) -> Result<(), String> {
+    let path = servers_path();
+    let mut servers: Vec<McpServerConfig> = load_json(&path)
+        .ok_or_else(|| "servers.json vanished between load and write".to_string())?;
+
+    let mut changed = false;
+    for s in &mut servers {
+        if s.id == server_id && s.first_launched_at.is_none() {
+            s.first_launched_at = Some(chrono::Utc::now());
+            changed = true;
+            break;
+        }
+    }
+
+    if changed {
+        save_json(&path, &servers);
+    }
+    Ok(())
 }
 
 fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> Result<(), String> {

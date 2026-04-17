@@ -57,6 +57,8 @@ impl TestEnv {
 }
 
 /// Minimal server fixture helper — only the fields the CLI actually reads.
+/// `trusted` defaults to true so most existing "reaches later stage" tests
+/// keep working; tests exercising the trust gate pass `false` explicitly.
 fn server_fixture(
     id: &str,
     command: &str,
@@ -64,6 +66,18 @@ fn server_fixture(
     enabled: bool,
     run_mode: serde_json::Value,
     env_mappings: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    server_fixture_with_trust(id, command, args, enabled, run_mode, env_mappings, true)
+}
+
+fn server_fixture_with_trust(
+    id: &str,
+    command: &str,
+    args: Vec<&str>,
+    enabled: bool,
+    run_mode: serde_json::Value,
+    env_mappings: Vec<serde_json::Value>,
+    trusted: bool,
 ) -> serde_json::Value {
     json!({
         "id": id,
@@ -74,7 +88,7 @@ fn server_fixture(
         "env_mappings": env_mappings,
         "run_mode": run_mode,
         "enabled": enabled,
-        "trusted": false,
+        "trusted": trusted,
         "created_at": "2026-04-17T00:00:00Z",
         "updated_at": "2026-04-17T00:00:00Z",
     })
@@ -254,6 +268,105 @@ fn version_flag_prints_version() {
         .success()
         .stdout(predicate::str::contains("mcp-proxy"))
         .stdout(predicate::str::contains("0.1.0"));
+}
+
+// ---------------------------------------------------------------------------
+// run — trust gate
+// ---------------------------------------------------------------------------
+
+#[test]
+fn run_untrusted_server_fails_with_gate_message() {
+    let env = TestEnv::new();
+    env.write_servers(json!([server_fixture_with_trust(
+        "risky",
+        "/bin/sh",
+        vec!["-c", "exit 0"],
+        true,
+        json!({ "type": "Local" }),
+        vec![],
+        false,
+    )]));
+
+    env.cmd()
+        .args(["run", "risky"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("not trusted"))
+        .stderr(predicate::str::contains("desktop app"));
+}
+
+#[test]
+fn run_untrusted_server_does_not_stamp_first_launched_at() {
+    // Untrusted launch must not touch the config — the write-back path is
+    // gated on the trust check upstream of secret resolution.
+    let env = TestEnv::new();
+    env.write_servers(json!([server_fixture_with_trust(
+        "risky",
+        "/bin/sh",
+        vec!["-c", "exit 0"],
+        true,
+        json!({ "type": "Local" }),
+        vec![],
+        false,
+    )]));
+
+    env.cmd().args(["run", "risky"]).assert().failure();
+
+    let raw = fs::read_to_string(env.path().join("servers.json")).unwrap();
+    assert!(
+        !raw.contains("first_launched_at"),
+        "untrusted launch must not stamp first_launched_at, got: {raw}"
+    );
+}
+
+#[test]
+fn run_trusted_server_stamps_first_launched_at() {
+    let env = TestEnv::new();
+    env.write_servers(json!([server_fixture(
+        "quick-exit",
+        "/bin/sh",
+        vec!["-c", "exit 0"],
+        true,
+        json!({ "type": "Local" }),
+        vec![],
+    )]));
+
+    env.cmd().args(["run", "quick-exit"]).assert().success();
+
+    let raw = fs::read_to_string(env.path().join("servers.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let ts = parsed[0]
+        .get("first_launched_at")
+        .and_then(|v| v.as_str())
+        .expect("first_launched_at should be written after first successful launch");
+    assert!(!ts.is_empty());
+}
+
+#[test]
+fn run_trusted_server_preserves_existing_first_launched_at() {
+    let env = TestEnv::new();
+    let preset = "2024-01-02T03:04:05Z";
+    let mut fixture = server_fixture(
+        "quick-exit",
+        "/bin/sh",
+        vec!["-c", "exit 0"],
+        true,
+        json!({ "type": "Local" }),
+        vec![],
+    );
+    fixture["first_launched_at"] = json!(preset);
+    env.write_servers(json!([fixture]));
+
+    env.cmd().args(["run", "quick-exit"]).assert().success();
+
+    let raw = fs::read_to_string(env.path().join("servers.json")).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        parsed[0]["first_launched_at"].as_str(),
+        Some(preset),
+        "existing first_launched_at must not be overwritten"
+    );
 }
 
 #[test]
