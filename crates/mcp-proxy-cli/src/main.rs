@@ -144,12 +144,27 @@ fn run_server(server_id: &str) -> Result<(), String> {
     // desktop app before an AI client is allowed to launch them. Enforced here
     // (before secret resolution) so untrusted configs never trigger a secret
     // read or audit entry.
+    //
+    // Sandbox escape hatch: an untrusted server MAY launch inside a Docker
+    // sandbox if the operator has explicitly set a `--network` flag in
+    // `extra_args` — that counts as a deliberate, informed run-with-policy
+    // choice. The sandbox runtime then enforces `--network=none` as the
+    // default for the untrusted tier (see `docker::resolve_network_flag`).
     if !config.trusted {
-        return Err(format!(
-            "Server '{}' is not trusted. Review and mark it as Trusted in the \
-             MCP Proxy desktop app before launching it from an AI client.",
-            config.name
-        ));
+        let untrusted_sandbox_allowed = matches!(
+            &config.run_mode,
+            RunMode::DockerSandbox { extra_args, .. }
+                if docker::extra_args_specify_network(extra_args)
+        );
+        if !untrusted_sandbox_allowed {
+            return Err(format!(
+                "Server '{}' is not trusted. Either mark it as Trusted in the \
+                 MCP Proxy desktop app after reviewing it, or run it in Docker \
+                 sandbox mode with an explicit `--network` policy in extra_args \
+                 (e.g., `--network=none`).",
+                config.name
+            ));
+        }
     }
 
     // 2. Load secret metadata
@@ -233,6 +248,7 @@ fn run_server(server_id: &str) -> Result<(), String> {
                 args: &config.args,
                 env_vars: &env_vars,
                 extra_args,
+                trusted: config.trusted,
                 build_root: &build_root,
             })
         }

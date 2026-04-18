@@ -18,6 +18,7 @@ import {
   KeyRound,
   X,
   Pencil,
+  Network,
 } from "lucide-react";
 import { useServers } from "../hooks/useServers";
 import { useSecrets } from "../hooks/useSecrets";
@@ -501,6 +502,15 @@ export function ServerConfig() {
                     min). Subsequent runs are cached.
                   </p>
                 )}
+
+                <NetworkPolicyHint
+                  trusted={trusted}
+                  extraArgs={
+                    editingServer?.run_mode.type === "DockerSandbox"
+                      ? editingServer.run_mode.extra_args
+                      : []
+                  }
+                />
               </div>
             )}
           </div>
@@ -686,5 +696,74 @@ export function ServerConfig() {
         </div>
       </Modal>
     </MainContent>
+  );
+}
+
+/// Mirrors the CLI logic in `crates/mcp-proxy-cli/src/docker.rs::resolve_network_flag`.
+/// Keep these two in sync — the CLI is the source of truth at runtime, this is
+/// just a disclosure to the user about what will happen.
+function extraArgsSpecifyNetwork(extraArgs: readonly string[]): boolean {
+  return extraArgs.some(
+    (a) =>
+      a === "--network" ||
+      a === "--net" ||
+      a.startsWith("--network=") ||
+      a.startsWith("--net="),
+  );
+}
+
+function NetworkPolicyHint({
+  trusted,
+  extraArgs,
+}: {
+  trusted: boolean;
+  extraArgs: readonly string[];
+}) {
+  const explicit = extraArgsSpecifyNetwork(extraArgs);
+  const effective: "explicit" | "bridge" | "none" = explicit
+    ? "explicit"
+    : trusted
+      ? "bridge"
+      : "none";
+
+  const tone =
+    effective === "none"
+      ? "border-warning/30 bg-warning/5"
+      : effective === "bridge"
+        ? "border-brand/30 bg-brand/5"
+        : "border-border-default/30 bg-bg-elevated";
+
+  return (
+    <div className={`mt-2 rounded-lg border ${tone} p-2.5`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Network size={12} className="text-text-secondary" />
+        <p className="text-xs font-bold text-text-primary">Network Policy</p>
+      </div>
+      {effective === "explicit" && (
+        <p className="text-xs text-text-secondary">
+          Uses the <code className="text-text-bright">--network</code> flag you
+          set in <code className="text-text-bright">extra_args</code>. Your
+          explicit choice always wins.
+        </p>
+      )}
+      {effective === "bridge" && (
+        <p className="text-xs text-text-secondary">
+          Trusted + no explicit <code className="text-text-bright">--network</code>{" "}
+          flag → container uses Docker's default <strong>bridge</strong> network.
+          The server can reach external APIs.
+        </p>
+      )}
+      {effective === "none" && (
+        <p className="text-xs text-text-secondary">
+          Untrusted + no explicit <code className="text-text-bright">--network</code>{" "}
+          flag → the CLI will inject{" "}
+          <code className="text-text-bright">--network=none</code> and the
+          container will have <strong>no network access</strong>. Most MCP
+          servers need network; mark this server <strong>Trusted</strong> after
+          reviewing it, or edit{" "}
+          <code className="text-text-bright">extra_args</code> to pick a policy.
+        </p>
+      )}
+    </div>
   );
 }
