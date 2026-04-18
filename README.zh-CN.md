@@ -117,6 +117,37 @@ mcp-proxy/
 | Local | 直接在宿主机启动真实 MCP Server，并注入环境变量 | 最快，但没有进程隔离 |
 | Docker Sandbox | 构建并运行容器化启动器，通过 stdin 接收密钥 | 隔离更强，但首次运行更慢 |
 
+## 信任模型 — 启动任何 Server 前请务必阅读
+
+应用里的每个 MCP Server 都带有一个 `trusted` 标记。这个标记是**单一的关键开关**，同时决定了 **CLI 是否允许启动该 Server**，以及在 Docker 沙箱模式下**使用哪种网络策略**。它不是 UI 摆设，请务必严肃对待。
+
+### `trusted` 控制了什么
+
+| 场景 | `trusted = false`（新 Server 的默认值） | `trusted = true` |
+| --- | --- | --- |
+| 本地（Local）模式 | **被拒绝启动。** `mcp-proxy run` 会直接报错，提示你在桌面应用里审查后标记为 Trusted。 | 正常启动。 |
+| Docker 沙箱，`extra_args` 中没有 `--network` 参数 | **在信任关口被拦截**，根本不会启动；错误信息提示你要么把 Server 标记为 Trusted，要么显式设置一条网络策略。 | 使用 Docker 默认的 **bridge** 网络启动（可访问外部 API，和本地模式在网络面上等价）。 |
+| Docker 沙箱，`extra_args` 中有显式 `--network=...` | **会启动**，并使用你显式指定的策略。CLI 把它视为你已经做出了知情决定。 | 使用你指定的策略启动（显式设定会覆盖默认，仍然是操作者的主动选择）。 |
+
+### 为什么未信任的沙箱默认是 `--network=none`
+
+沙箱的意义就在于隔离尚未审查过的 MCP Server。一个恶意或已被攻陷的 Server，只要有一条出网连接，就能在毫秒级把所有映射给它的密钥发到任何外部地址。所以任何未被信任的容器，默认策略都是**完全不连网**。绝大多数真实 MCP Server（GitHub、Slack、网页抓取等）都需要网络，所以标准工作流是：
+
+1. 添加 Server，默认就是 `Untrusted`。
+2. 在桌面应用里审查包源、命令、参数。
+3. 把它切为 `Trusted` — 此后沙箱会使用默认 bridge 网络，和本机其它程序一样。
+
+如果你确实希望在未信任状态下给 Server 网络权限，就在 `servers.json` 的 `extra_args` 里加上显式的 `--network=...` 标志。这被视为一次知情选择，CLI 会放行信任关口。
+
+### 操作者建议
+
+- 新加入的 Server 默认保持 **Untrusted**，直到你读过它的源码或文档。
+- **优先标记为 Trusted**，而不是靠 `extra_args` 放通网络。显式覆盖是一条后门，不应成为常态。
+- 如果非要运行未信任的 Server，请用沙箱模式并保留默认 `--network=none`，从根上阻断外泄路径。
+- 不要在共享账户上留下你没亲自审查过的 Trusted Server。
+
+相关代码：信任关口位于 [crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs)，网络策略位于 [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) 中的 `resolve_network_flag`。
+
 ## 支持的 AI 客户端
 
 | 客户端 | 配置格式 |

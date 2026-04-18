@@ -117,6 +117,37 @@ mcp-proxy/
 | Local | Spawns the real MCP server directly on the host with injected env vars | Fastest, but no process isolation |
 | Docker Sandbox | Builds and runs a containerized launcher that receives secrets over stdin | Better isolation, but slower first run due to image build |
 
+## Trust model — read this before launching any server
+
+Every MCP server in this app carries a `trusted` flag. It is the single user-facing lever that decides both **whether the CLI will launch the server at all** and **what Docker network policy applies** when sandboxing is on. Please treat it as load-bearing — not a UI decoration.
+
+### What `trusted` controls
+
+| Scenario | `trusted = false` (default for new servers) | `trusted = true` |
+| --- | --- | --- |
+| Local run mode | **Blocked.** `mcp-proxy run` refuses to launch; the AI client sees an error asking you to review and mark it Trusted. | Launches normally. |
+| Docker sandbox, no `--network` flag in `extra_args` | **Blocked** at the trust gate. The server is not launched — the error tells you to either mark it Trusted or pick an explicit network policy. | Launches with Docker's default **bridge** network (can reach external APIs, same as local mode). |
+| Docker sandbox, explicit `--network=...` in `extra_args` | **Launches**, using your explicit policy. The CLI takes that as an informed choice. | Launches with your explicit policy (trust flag is effectively bypassed by the explicit setting — still the operator's choice). |
+
+### Why the default for untrusted sandbox is `--network=none`
+
+The point of the sandbox is to contain MCP servers you have not yet reviewed. A malicious or compromised server with a network connection can exfiltrate any secret you have mapped to it — in milliseconds, to any endpoint. The default policy for anything untrusted is therefore **no network at all**. Since most real MCP servers (GitHub, Slack, web fetchers, …) need network to function, the expected workflow is:
+
+1. Add the server. It starts as `Untrusted`.
+2. Review the package, command, and arguments in the desktop app.
+3. Flip it to `Trusted` — now it runs with the default bridge network, same as any other app on your machine.
+
+If you genuinely want to run a server as untrusted but with some network access, edit `extra_args` in `servers.json` to include an explicit `--network=...` flag. That counts as a conscious choice and the CLI will let it through the trust gate.
+
+### What operators should do
+
+- Leave new servers as **Untrusted** until you have read their source / docs.
+- Prefer flipping to **Trusted** over keeping things untrusted-with-network-overrides. Explicit overrides are an escape hatch, not the main path.
+- If you must run untrusted servers, prefer sandbox mode with the default `--network=none` policy — this blocks the exfiltration path entirely.
+- Never share a machine account that has trusted servers you did not personally review.
+
+The relevant code: trust gate in [crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs), network policy in [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) (`resolve_network_flag`).
+
 ## Supported AI clients
 
 | Client | Config format |
