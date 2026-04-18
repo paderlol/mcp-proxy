@@ -91,14 +91,23 @@ Known security gaps to address in future iterations.
 - **Remaining**: No macOS `sandbox-exec` wrapper yet — trusted Local
   servers still run with the user's full FS/network access. Future work.
 
-### 10. Docker `--log-driver=none` by Default
+### 10. Docker `--log-driver=none` by Default ✅ shipped
 - **Risk**: Operators who configure non-default Docker log drivers
-  (e.g. `journald`, `fluentd`) could capture container stdin, which
-  includes the one-line secret JSON payload written by the CLI.
-- **Fix**: Inject `--log-driver=none` into the base `docker run` args in
+  (e.g. `journald`, `fluentd`, `splunk`, `gelf`) could capture container
+  stdin, which includes the one-line JSON secret payload written by the
+  CLI. Docker's default `json-file` driver does not capture stdin, so
+  default-configured hosts were safe, but this is defense in depth.
+- **Status**: Shipped in
   [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs)
-  `docker_run_with_stdin_payload`, with a user-facing note in README.
-- **Status**: Not yet shipped.
+  (`resolve_log_driver_flag` + `extra_args_specify_log_driver`, wired
+  into `docker_run_with_stdin_payload`). Every `docker run` invocation
+  now gets `--log-driver=none` injected by default. Any explicit
+  `--log-driver` flag in `extra_args` (single- or space-form) still
+  wins. Documented in README.md "Container logging" and README.zh-CN.md
+  "容器日志".
+- **Residual risk**: Operators who intentionally set `--log-driver` in
+  `extra_args` to a capturing driver trade off auditability vs. secret
+  exposure — that is an informed choice.
 
 ### 11. Base Image Auto-Inference & Prebuilt-Image MCP Servers
 - **Risk**: Not strictly a security gap — but both touch the Dockerfile

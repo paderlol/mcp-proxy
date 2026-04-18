@@ -112,6 +112,37 @@ pub(crate) fn resolve_network_flag(trusted: bool, extra_args: &[String]) -> Opti
 }
 
 // ---------------------------------------------------------------------------
+// log driver policy
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if `extra_args` already contains a `--log-driver` flag
+/// (either `--log-driver=foo` or `--log-driver foo`). The operator's explicit
+/// choice always wins over our default.
+pub(crate) fn extra_args_specify_log_driver(extra_args: &[String]) -> bool {
+    extra_args
+        .iter()
+        .any(|a| a == "--log-driver" || a.starts_with("--log-driver="))
+}
+
+/// Log-driver flag we inject into `docker run`. Defaults to `--log-driver=none`
+/// so that operators who have configured a non-default Docker log driver
+/// (e.g. `journald`, `fluentd`, `splunk`, `gelf`) do not accidentally persist
+/// the one-line JSON secret payload we write to container stdin. Docker's
+/// default `json-file` driver does not capture stdin, so this is defense in
+/// depth — but the cost of being wrong is leaking secrets to a log sink, so
+/// we inject unconditionally unless the operator opted out.
+///
+/// Returns `None` if the operator already supplied `--log-driver` in
+/// `extra_args`, letting their choice win.
+pub(crate) fn resolve_log_driver_flag(extra_args: &[String]) -> Option<&'static str> {
+    if extra_args_specify_log_driver(extra_args) {
+        None
+    } else {
+        Some("--log-driver=none")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // docker CLI detection
 // ---------------------------------------------------------------------------
 
@@ -278,6 +309,9 @@ fn docker_run_with_stdin_payload(
 ) -> Result<(), String> {
     let mut cmd = Command::new("docker");
     cmd.args(["run", "-i", "--rm"]);
+    if let Some(flag) = resolve_log_driver_flag(extra_args) {
+        cmd.arg(flag);
+    }
     if let Some(flag) = resolve_network_flag(trusted, extra_args) {
         cmd.arg(flag);
     }
@@ -418,6 +452,43 @@ mod tests {
         ];
         assert!(!extra_args_specify_network(&extra));
         assert_eq!(resolve_network_flag(false, &extra), Some("--network=none"));
+    }
+
+    // --- Log driver policy -----------------------------------------------
+
+    #[test]
+    fn log_driver_flag_defaults_to_none() {
+        let extra: Vec<String> = vec![];
+        assert_eq!(resolve_log_driver_flag(&extra), Some("--log-driver=none"));
+    }
+
+    #[test]
+    fn log_driver_flag_respects_explicit_equals_override() {
+        // `--log-driver=json-file` as a single token must win.
+        let extra = vec!["--log-driver=json-file".to_string()];
+        assert!(extra_args_specify_log_driver(&extra));
+        assert_eq!(resolve_log_driver_flag(&extra), None);
+    }
+
+    #[test]
+    fn log_driver_flag_respects_explicit_space_override() {
+        // `--log-driver foo` as two tokens must also count as explicit.
+        let extra = vec!["--log-driver".to_string(), "foo".to_string()];
+        assert!(extra_args_specify_log_driver(&extra));
+        assert_eq!(resolve_log_driver_flag(&extra), None);
+    }
+
+    #[test]
+    fn log_driver_flag_ignores_unrelated_args() {
+        // Unrelated flags (including `--log-opt`) must not be treated as an
+        // override of `--log-driver`.
+        let extra = vec![
+            "-v".to_string(),
+            "/tmp:/tmp".to_string(),
+            "--log-opt=max-size=10m".to_string(),
+        ];
+        assert!(!extra_args_specify_log_driver(&extra));
+        assert_eq!(resolve_log_driver_flag(&extra), Some("--log-driver=none"));
     }
 
     // --- Dockerfile content ----------------------------------------------
