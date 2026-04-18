@@ -55,7 +55,7 @@ fn generate_codex(
     let keys = mcp_proxy_common::models::config_keys(servers);
     let mut toml = String::new();
     for (s, key) in servers.iter().zip(keys) {
-        toml.push_str(&format!("[mcp_servers.{}]\n", key));
+        toml.push_str(&format!("[mcp_servers.{key}]\n"));
         toml.push_str("command = \"mcp-proxy\"\n");
         toml.push_str(&format!(
             "args = [\"run\", \"{}\"]\n\n",

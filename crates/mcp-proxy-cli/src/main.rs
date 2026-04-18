@@ -147,14 +147,14 @@ fn run_server(server_id: &str) -> Result<(), String> {
         let keys = config_keys(&refs);
 
         let by_exact_id = servers.iter().position(|s| s.id == server_id);
-        let by_config_key = keys.iter().position(|k| k == &server_id);
+        let by_config_key = keys.iter().position(|k| k == server_id);
         let by_hex_id = servers.iter().position(|s| hex_id(&s.id) == server_id);
 
         let picked = by_exact_id.or(by_config_key).or(by_hex_id).or_else(|| {
             let mut matches = servers
                 .iter()
                 .enumerate()
-                .filter(|(_, s)| s.id.starts_with(&server_id))
+                .filter(|(_, s)| s.id.starts_with(server_id))
                 .map(|(i, _)| i);
             match (matches.next(), matches.next()) {
                 (Some(i), None) => Some(i),
@@ -170,7 +170,7 @@ fn run_server(server_id: &str) -> Result<(), String> {
                 // on ambiguity.
                 let prefix_count = servers
                     .iter()
-                    .filter(|s| s.id.starts_with(&server_id))
+                    .filter(|s| s.id.starts_with(server_id))
                     .count();
                 if prefix_count > 1 {
                     return Err(format!(
