@@ -15,7 +15,9 @@ mod sandbox;
 use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
 use mcp_proxy_common::invocation_log::{Direction, InvocationLogger, LoggerHandle};
-use mcp_proxy_common::models::{EnvValue, McpServerConfig, RunMode, SecretMeta};
+use mcp_proxy_common::models::{
+    config_keys, hex_id, EnvValue, McpServerConfig, RunMode, SecretMeta,
+};
 use mcp_proxy_common::secret_resolver::resolve_secret;
 use mcp_proxy_common::store::{
     app_data_dir, load_json, save_json, secrets_meta_path, servers_path,
@@ -133,11 +135,53 @@ fn run_server(server_id: &str) -> Result<(), String> {
         )
     })?;
 
-    let config = servers
-        .iter()
-        .find(|s| s.id == server_id)
-        .cloned()
-        .ok_or_else(|| format!("Server '{server_id}' not found in servers.json"))?;
+    // Resolve `server_id` against the set of servers. Accepts, in order:
+    //   1. Exact UUID match.
+    //   2. The generator's config key (slugified name, with short-id suffix
+    //      on slug collisions) — this is what AI-client configs actually
+    //      contain.
+    //   3. Unique UUID prefix match (legacy configs written before names
+    //      were used as keys).
+    let config = {
+        let refs: Vec<&McpServerConfig> = servers.iter().collect();
+        let keys = config_keys(&refs);
+
+        let by_exact_id = servers.iter().position(|s| s.id == server_id);
+        let by_config_key = keys.iter().position(|k| k == server_id);
+        let by_hex_id = servers.iter().position(|s| hex_id(&s.id) == server_id);
+
+        let picked = by_exact_id.or(by_config_key).or(by_hex_id).or_else(|| {
+            let mut matches = servers
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.id.starts_with(server_id))
+                .map(|(i, _)| i);
+            match (matches.next(), matches.next()) {
+                (Some(i), None) => Some(i),
+                _ => None,
+            }
+        });
+
+        match picked {
+            Some(i) => servers[i].clone(),
+            None => {
+                // Distinguish "ambiguous prefix" from "not found" for a
+                // better error — the previous branch silently returned None
+                // on ambiguity.
+                let prefix_count = servers
+                    .iter()
+                    .filter(|s| s.id.starts_with(server_id))
+                    .count();
+                if prefix_count > 1 {
+                    return Err(format!(
+                        "Server id '{server_id}' is ambiguous — multiple servers share this prefix. \
+                         Use the full id or the exact config key."
+                    ));
+                }
+                return Err(format!("Server '{server_id}' not found in servers.json"));
+            }
+        }
+    };
 
     if !config.enabled {
         return Err(format!("Server '{server_id}' is disabled"));

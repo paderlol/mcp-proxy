@@ -22,11 +22,17 @@ pub async fn generate_config(client: String, state: State<'_, AppState>) -> Resu
     }
 }
 
+// The config map key is a human-readable slug derived from the server name
+// (via `config_keys`), but the `args` passed to `mcp-proxy run` use the
+// stable UUID so that renaming a server in the desktop app doesn't break
+// existing AI-client configs — the CLI resolves by id.
+
 fn generate_claude_cursor(
     servers: &[&mcp_proxy_common::models::McpServerConfig],
 ) -> Result<String, String> {
+    let keys = mcp_proxy_common::models::config_keys(servers);
     let mut map = serde_json::Map::new();
-    for s in servers {
+    for (s, key) in servers.iter().zip(keys) {
         let mut entry = serde_json::Map::new();
         entry.insert(
             "command".to_string(),
@@ -34,13 +40,9 @@ fn generate_claude_cursor(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id])
-                .as_array()
-                .unwrap()
-                .clone()
-                .into(),
+            serde_json::json!(["run", mcp_proxy_common::models::hex_id(&s.id)]),
         );
-        map.insert(s.id.clone(), serde_json::Value::Object(entry));
+        map.insert(key, serde_json::Value::Object(entry));
     }
 
     let config = serde_json::json!({ "mcpServers": map });
@@ -50,11 +52,15 @@ fn generate_claude_cursor(
 fn generate_codex(
     servers: &[&mcp_proxy_common::models::McpServerConfig],
 ) -> Result<String, String> {
+    let keys = mcp_proxy_common::models::config_keys(servers);
     let mut toml = String::new();
-    for s in servers {
-        toml.push_str(&format!("[mcp_servers.{}]\n", s.id));
+    for (s, key) in servers.iter().zip(keys) {
+        toml.push_str(&format!("[mcp_servers.{key}]\n"));
         toml.push_str("command = \"mcp-proxy\"\n");
-        toml.push_str(&format!("args = [\"run\", \"{}\"]\n\n", s.id));
+        toml.push_str(&format!(
+            "args = [\"run\", \"{}\"]\n\n",
+            mcp_proxy_common::models::hex_id(&s.id)
+        ));
     }
     Ok(toml)
 }
@@ -62,8 +68,9 @@ fn generate_codex(
 fn generate_vscode(
     servers: &[&mcp_proxy_common::models::McpServerConfig],
 ) -> Result<String, String> {
+    let keys = mcp_proxy_common::models::config_keys(servers);
     let mut map = serde_json::Map::new();
-    for s in servers {
+    for (s, key) in servers.iter().zip(keys) {
         let mut entry = serde_json::Map::new();
         entry.insert(
             "type".to_string(),
@@ -75,13 +82,9 @@ fn generate_vscode(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id])
-                .as_array()
-                .unwrap()
-                .clone()
-                .into(),
+            serde_json::json!(["run", mcp_proxy_common::models::hex_id(&s.id)]),
         );
-        map.insert(s.id.clone(), serde_json::Value::Object(entry));
+        map.insert(key, serde_json::Value::Object(entry));
     }
 
     let config = serde_json::json!({ "servers": map });
@@ -91,8 +94,9 @@ fn generate_vscode(
 fn generate_windsurf(
     servers: &[&mcp_proxy_common::models::McpServerConfig],
 ) -> Result<String, String> {
+    let keys = mcp_proxy_common::models::config_keys(servers);
     let mut map = serde_json::Map::new();
-    for s in servers {
+    for (s, key) in servers.iter().zip(keys) {
         let mut entry = serde_json::Map::new();
         entry.insert(
             "command".to_string(),
@@ -100,13 +104,9 @@ fn generate_windsurf(
         );
         entry.insert(
             "args".to_string(),
-            serde_json::json!(["run", &s.id])
-                .as_array()
-                .unwrap()
-                .clone()
-                .into(),
+            serde_json::json!(["run", mcp_proxy_common::models::hex_id(&s.id)]),
         );
-        map.insert(s.id.clone(), serde_json::Value::Object(entry));
+        map.insert(key, serde_json::Value::Object(entry));
     }
 
     let config = serde_json::json!({ "servers": map });
@@ -220,6 +220,83 @@ mod tests {
                 "generator appears to have embedded an env var value: {out}"
             );
         }
+    }
+
+    #[test]
+    fn keys_prefer_slugified_name_over_uuid() {
+        // Real servers get UUID v4 ids. The config map key must come from
+        // the human-readable name, not the UUID.
+        let mut srv = sample_server("placeholder");
+        srv.name = "GitHub MCP".to_string();
+        srv.id = "5a4dfc7a-6ea7-4a74-995c-4ab599247142".to_string();
+
+        let out = generate_claude_cursor(&[&srv]).unwrap();
+        let v = as_json(&out);
+        assert!(v["mcpServers"]["github-mcp"].is_object());
+        assert!(v["mcpServers"].get(&srv.id).is_none());
+        // Map key is the friendly slug; args use the docker-style 12-char
+        // hex id (stable under rename since it's derived from the immutable
+        // UUID, and short enough to read at a glance).
+        let hex = "5a4dfc7a6ea7";
+        assert_eq!(
+            v["mcpServers"]["github-mcp"]["args"],
+            serde_json::json!(["run", hex])
+        );
+        assert!(!out.contains(&srv.id));
+
+        let codex = generate_codex(&[&srv]).unwrap();
+        assert!(codex.contains("[mcp_servers.github-mcp]"));
+        assert!(codex.contains(&format!(r#"args = ["run", "{hex}"]"#)));
+        assert!(!codex.contains(&srv.id));
+    }
+
+    #[test]
+    fn duplicate_slugs_get_short_id_suffix() {
+        // Two servers with names that slug identically must not collide —
+        // keep slug for one and append short-id to the other, or suffix both.
+        let mut a = sample_server("a");
+        a.name = "GitHub".to_string();
+        a.id = "aaaaaaaa-1111-2222-3333-444444444444".to_string();
+        let mut b = sample_server("b");
+        b.name = "github".to_string();
+        b.id = "bbbbbbbb-1111-2222-3333-444444444444".to_string();
+
+        let out = generate_claude_cursor(&[&a, &b]).unwrap();
+        let v = as_json(&out);
+        let servers = v["mcpServers"].as_object().unwrap();
+        assert_eq!(servers.len(), 2);
+        assert!(servers.contains_key("github-aaaaaaaa"));
+        assert!(servers.contains_key("github-bbbbbbbb"));
+    }
+
+    #[test]
+    fn uuid_shaped_name_falls_back_to_short_id() {
+        // Regression: if a server was imported from a client config whose
+        // keys were previously-generated UUIDs (e.g. re-importing an old
+        // mcp-proxy-written claude_desktop_config.json), the `name` field
+        // ends up holding the UUID. That UUID-as-name must not leak back
+        // into the config — treat it as if the name were empty.
+        let mut srv = sample_server("x");
+        srv.name = "5a4dfc7a-6ea7-4a74-995c-4ab599247142".to_string();
+        srv.id = "5a4dfc7a-6ea7-4a74-995c-4ab599247142".to_string();
+
+        let out = generate_claude_cursor(&[&srv]).unwrap();
+        let v = as_json(&out);
+        let servers = v["mcpServers"].as_object().unwrap();
+        assert_eq!(servers.len(), 1);
+        assert!(servers.contains_key("5a4dfc7a"));
+        assert!(!servers.contains_key(&srv.id));
+    }
+
+    #[test]
+    fn empty_or_symbolic_name_falls_back_to_short_id() {
+        let mut srv = sample_server("x");
+        srv.name = "***".to_string();
+        srv.id = "cafebabe-0000-0000-0000-000000000000".to_string();
+
+        let out = generate_claude_cursor(&[&srv]).unwrap();
+        let v = as_json(&out);
+        assert!(v["mcpServers"]["cafebabe"].is_object());
     }
 
     #[test]

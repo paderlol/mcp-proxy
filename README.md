@@ -114,10 +114,11 @@ mcp-proxy/
 │   ├── mcp-proxy-cli/          # CLI used by AI clients
 │   └── mcp-proxy-agent/        # Docker-side launcher
 ├── tests/e2e/                  # Playwright UI tests
-├── docs/                       # Additional project docs
-├── DESIGN.md                   # UI and visual system
-├── TEST_RULES.md               # Testing policy
-└── SECURITY_TODO.md            # Known security gaps and follow-up work
+└── docs/
+    ├── DESIGN.md               # UI and visual system
+    ├── TEST_RULES.md           # Testing policy
+    ├── SECURITY_TODO.md        # Known security gaps and follow-up work
+    └── e2e-manual.md           # Manual AI-client verification walkthrough
 ```
 
 ## Supported run modes
@@ -261,9 +262,9 @@ npm run test:e2e
 
 ## Documentation
 
-- [DESIGN.md](DESIGN.md): visual language and UI conventions
-- [TEST_RULES.md](TEST_RULES.md): testing policy and suite details
-- [SECURITY_TODO.md](SECURITY_TODO.md): known security gaps and future hardening work
+- [docs/DESIGN.md](docs/DESIGN.md): visual language and UI conventions
+- [docs/TEST_RULES.md](docs/TEST_RULES.md): testing policy and suite details
+- [docs/SECURITY_TODO.md](docs/SECURITY_TODO.md): known security gaps and future hardening work
 - [docs/e2e-manual.md](docs/e2e-manual.md): manual end-to-end verification notes
 
 ## Status

@@ -32,7 +32,121 @@ fn default_true() -> bool {
     true
 }
 
+/// Docker-style short identifier: the first hyphen-delimited segment of a
+/// UUID (8 hex chars for a v4 UUID like `5a4dfc7a-6ea7-...`). If `id` has no
+/// hyphen (tests or legacy ids), returns the input unchanged.
+pub fn short_id(id: &str) -> &str {
+    id.split('-').next().unwrap_or(id)
+}
+
+/// Docker-style 12-char hex identifier: strip dashes from a UUID, take the
+/// first 12 hex chars. Matches how `docker ps` displays container ids.
+/// For non-UUID legacy ids (no dashes, short) returns the id unchanged so
+/// tests and hand-set ids keep working.
+pub fn hex_id(id: &str) -> String {
+    let stripped: String = id.chars().filter(|c| *c != '-').collect();
+    if stripped.len() >= 12 && id.contains('-') {
+        stripped[..12].to_string()
+    } else {
+        id.to_string()
+    }
+}
+
+/// Slugify a server name for use as a config map key.
+///
+/// Result is constrained to `[a-z0-9_-]+` so it's valid as a TOML bare key
+/// (Codex) and unsurprising as a JSON key in the other clients. Non-alnum
+/// runs collapse to a single `-`; leading/trailing `-` are trimmed. Returns
+/// an empty string if the name contains no alnum characters — callers
+/// should fall back to `short_id` in that case.
+pub fn slug_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut prev_dash = true;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            prev_dash = false;
+        } else if ch == '_' {
+            out.push('_');
+            prev_dash = false;
+        } else if !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    if out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
+/// True if `s` looks like a v4 UUID (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
+/// 36 chars, hex + hyphens at the canonical positions). Used to reject
+/// UUID-as-name when building config keys: if a server's `name` was
+/// previously imported from a client config where the key was the full
+/// UUID (e.g. re-imported from an old mcp-proxy-generated
+/// `claude_desktop_config.json`), the name is meaningless and the key
+/// should fall back to `short_id` rather than preserving the UUID.
+fn looks_like_uuid(s: &str) -> bool {
+    if s.len() != 36 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    for (i, b) in bytes.iter().enumerate() {
+        let is_dash_pos = matches!(i, 8 | 13 | 18 | 23);
+        let ok = if is_dash_pos {
+            *b == b'-'
+        } else {
+            b.is_ascii_hexdigit()
+        };
+        if !ok {
+            return false;
+        }
+    }
+    true
+}
+
+/// Build a list of stable, unique, human-readable config keys for a set of
+/// servers. Order matches the input. Uses the slugified name when it's
+/// unique; falls back to `{slug}-{short_id}` on collision or `{short_id}`
+/// when the name has no slug-safe characters or is itself a UUID.
+pub fn config_keys(servers: &[&McpServerConfig]) -> Vec<String> {
+    let slugs: Vec<String> = servers
+        .iter()
+        .map(|s| {
+            if looks_like_uuid(&s.name) {
+                String::new()
+            } else {
+                slug_name(&s.name)
+            }
+        })
+        .collect();
+    let mut counts = std::collections::HashMap::<&str, usize>::new();
+    for slug in &slugs {
+        if !slug.is_empty() {
+            *counts.entry(slug.as_str()).or_insert(0) += 1;
+        }
+    }
+    servers
+        .iter()
+        .zip(slugs.iter())
+        .map(|(s, slug)| {
+            if slug.is_empty() {
+                s.short_id().to_string()
+            } else if counts.get(slug.as_str()).copied().unwrap_or(0) > 1 {
+                format!("{}-{}", slug, s.short_id())
+            } else {
+                slug.clone()
+            }
+        })
+        .collect()
+}
+
 impl McpServerConfig {
+    pub fn short_id(&self) -> &str {
+        short_id(&self.id)
+    }
+
     pub fn new(name: String, command: String, args: Vec<String>, transport: Transport) -> Self {
         let now = Utc::now();
         Self {
@@ -226,7 +340,7 @@ pub enum ServerStatus {
 // Tests
 // ---------------------------------------------------------------------------
 //
-// These tests enforce the contracts described in TEST_RULES.md §3.1:
+// These tests enforce the contracts described in docs/TEST_RULES.md §3.1:
 // any serde change to these types must round-trip and preserve aliases.
 
 #[cfg(test)]
