@@ -38,7 +38,7 @@ export function RegistryBrowser({
           {(Object.keys(regionLabels) as RegistryRegion[]).map((r) => (
             <PillButton
               key={r}
-              variant={region === r ? "dark" : "outlined"}
+              variant={region === r ? "brand" : "outlined"}
               onClick={() => setRegion(r)}
               className="flex-1"
             >
