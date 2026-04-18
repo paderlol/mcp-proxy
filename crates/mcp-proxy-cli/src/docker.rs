@@ -759,7 +759,10 @@ mod tests {
     #[test]
     fn build_run_argv_operator_overrides_win() {
         // Explicit operator flags must suppress our injected defaults.
-        let extra = vec!["--log-driver=json-file".to_string(), "--network=host".into()];
+        let extra = vec![
+            "--log-driver=json-file".to_string(),
+            "--network=host".into(),
+        ];
         let argv = build_run_argv("tag:abc", &extra, false);
         assert_eq!(
             argv,
