@@ -36,6 +36,12 @@ pub struct SandboxConfig<'a> {
     pub args: &'a [String],
     pub env_vars: &'a HashMap<String, String>,
     pub extra_args: &'a [String],
+    /// Whether the operator has reviewed and trusted this server. Untrusted
+    /// servers get `--network=none` injected by default (unless the operator
+    /// also set `--network` explicitly in `extra_args`). See the trust gate
+    /// in `main.rs::run_server` — untrusted servers without an explicit
+    /// network override never reach this function.
+    pub trusted: bool,
     /// Where build contexts get cached. Typically
     /// `mcp_proxy_common::store::app_data_dir().join("docker-build")`.
     pub build_root: &'a Path,
@@ -69,7 +75,40 @@ pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
         args: cfg.args,
     };
 
-    docker_run_with_stdin_payload(&tag, cfg.extra_args, &payload)
+    docker_run_with_stdin_payload(&tag, cfg.extra_args, cfg.trusted, &payload)
+}
+
+// ---------------------------------------------------------------------------
+// network policy
+// ---------------------------------------------------------------------------
+
+/// Returns `true` if `extra_args` already contains a `--network` / `--net`
+/// flag (either `--network=foo` or `--network foo`). The operator's explicit
+/// choice always wins over our default.
+pub(crate) fn extra_args_specify_network(extra_args: &[String]) -> bool {
+    extra_args.iter().any(|a| {
+        a == "--network" || a == "--net" || a.starts_with("--network=") || a.starts_with("--net=")
+    })
+}
+
+/// Network flag we inject into `docker run` based on trust. Returns `None`
+/// when the operator already specified a `--network` flag in `extra_args`
+/// (their choice wins), or when the server is trusted (we leave Docker's
+/// default bridge network alone — matches local-mode behaviour).
+///
+/// Untrusted servers get `--network=none` to prevent secret exfiltration by
+/// a compromised or malicious MCP server. Most real MCP servers need network
+/// access, so the UI / docs steer users toward marking the server trusted
+/// once they've reviewed it.
+pub(crate) fn resolve_network_flag(trusted: bool, extra_args: &[String]) -> Option<&'static str> {
+    if extra_args_specify_network(extra_args) {
+        return None;
+    }
+    if trusted {
+        None
+    } else {
+        Some("--network=none")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +273,14 @@ fn docker_build(ctx_dir: &Path, tag: &str) -> Result<(), String> {
 fn docker_run_with_stdin_payload(
     tag: &str,
     extra_args: &[String],
+    trusted: bool,
     payload: &SecretPayload,
 ) -> Result<(), String> {
     let mut cmd = Command::new("docker");
     cmd.args(["run", "-i", "--rm"]);
+    if let Some(flag) = resolve_network_flag(trusted, extra_args) {
+        cmd.arg(flag);
+    }
     for a in extra_args {
         cmd.arg(a);
     }
@@ -319,8 +362,62 @@ mod tests {
             args,
             env_vars,
             extra_args,
+            trusted: true,
             build_root,
         }
+    }
+
+    // --- Network policy --------------------------------------------------
+
+    #[test]
+    fn network_flag_untrusted_with_no_override_defaults_to_none() {
+        let extra: Vec<String> = vec![];
+        assert_eq!(resolve_network_flag(false, &extra), Some("--network=none"));
+    }
+
+    #[test]
+    fn network_flag_trusted_leaves_bridge_default() {
+        let extra: Vec<String> = vec![];
+        assert_eq!(resolve_network_flag(true, &extra), None);
+    }
+
+    #[test]
+    fn network_flag_respects_explicit_network_equals_override() {
+        // Untrusted + explicit override → we yield to the user's choice.
+        let extra = vec!["--network=host".to_string()];
+        assert_eq!(resolve_network_flag(false, &extra), None);
+    }
+
+    #[test]
+    fn network_flag_respects_explicit_network_space_override() {
+        // `--network bridge` as two tokens must also count as explicit.
+        let extra = vec!["--network".to_string(), "bridge".to_string()];
+        assert_eq!(resolve_network_flag(false, &extra), None);
+    }
+
+    #[test]
+    fn network_flag_respects_explicit_net_alias() {
+        let extra = vec!["--net=none".to_string()];
+        assert!(extra_args_specify_network(&extra));
+        assert_eq!(resolve_network_flag(false, &extra), None);
+    }
+
+    #[test]
+    fn network_flag_respects_short_net_two_token() {
+        let extra = vec!["--net".to_string(), "host".to_string()];
+        assert!(extra_args_specify_network(&extra));
+    }
+
+    #[test]
+    fn network_flag_ignores_unrelated_args() {
+        // `--networkless=foo` etc. must not be treated as a network override.
+        let extra = vec![
+            "-v".to_string(),
+            "/tmp:/tmp".to_string(),
+            "--memory=512m".to_string(),
+        ];
+        assert!(!extra_args_specify_network(&extra));
+        assert_eq!(resolve_network_flag(false, &extra), Some("--network=none"));
     }
 
     // --- Dockerfile content ----------------------------------------------
