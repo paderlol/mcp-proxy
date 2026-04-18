@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nickvdyck/tauri-settings-schema/main/schema/tauri-conf.schema.json",
   "productName": "MCP Proxy",
+  "mainBinaryName": "MCP Proxy",
   "version": "0.1.0",
   "identifier": "com.mcp-proxy.app",
   "build": {

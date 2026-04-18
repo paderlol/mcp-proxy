@@ -16,6 +16,7 @@ export interface McpServerConfig {
   created_at: string;
   updated_at: string;
   first_launched_at?: string;
+  log_invocations?: boolean;
 }
 
 export type RunMode =
@@ -26,9 +27,15 @@ export type Transport =
   | { type: "Stdio" }
   | { type: "Sse"; port: number; path: string };
 
+export type EnvValue =
+  | { type: "Secret"; secret_ref: string }
+  | { type: "Plaintext"; value: string };
+
 export interface EnvMapping {
   env_var_name: string;
-  secret_ref: string;
+  value?: EnvValue;
+  /** Legacy mirror field for downgraded binaries. Set iff `value.type === "Secret"`. */
+  secret_ref?: string;
 }
 
 export interface SecretEntry {
@@ -83,4 +90,68 @@ export interface AuditLogEntry {
   secret_id: string;
   source: string;
   status: AuditLogStatus;
+}
+
+export interface InvocationSession {
+  id: number;
+  server_id: string;
+  run_mode: string;
+  started_at: string;
+  ended_at: string | null;
+  exit_code: number | null;
+  error: string | null;
+  tool_call_count: number;
+}
+
+export interface ToolCallRow {
+  id: number;
+  session_id: number;
+  direction: "request" | "response" | "notification" | string;
+  method: string | null;
+  tool_name: string | null;
+  jsonrpc_id: string | null;
+  timestamp: string;
+  duration_ms: number | null;
+  is_error: boolean;
+  payload: string;
+}
+
+export type SourceClient =
+  | "ClaudeDesktop"
+  | "ClaudeCode"
+  | "Codex"
+  | "Cursor"
+  | "VsCode"
+  | "Windsurf";
+
+export interface DiscoveredServer {
+  source: SourceClient;
+  source_path: string;
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  transport: string;
+}
+
+export type EnvDecision =
+  | {
+      kind: "Secret";
+      env_var_name: string;
+      secret_id: string;
+      label: string;
+      value: string;
+    }
+  | { kind: "Plaintext"; env_var_name: string; value: string };
+
+export interface ImportSelection {
+  discovered: DiscoveredServer;
+  env_decisions: EnvDecision[];
+  trusted: boolean;
+}
+
+export interface ImportResult {
+  server_id: string;
+  server_name: string;
+  created_secret_ids: string[];
 }

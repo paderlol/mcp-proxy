@@ -1,4 +1,6 @@
 pub mod audit;
+pub mod client_read;
+pub mod invocation_log;
 pub mod local_backend;
 pub mod models;
 pub mod preferences;

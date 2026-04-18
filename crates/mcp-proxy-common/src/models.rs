@@ -22,6 +22,14 @@ pub struct McpServerConfig {
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_launched_at: Option<DateTime<Utc>>,
+    /// Persist JSON-RPC traffic + session rows for this server's runs into
+    /// `invocations.db`. Defaults to true; toggleable per-server for privacy.
+    #[serde(default = "default_true")]
+    pub log_invocations: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl McpServerConfig {
@@ -41,14 +49,100 @@ impl McpServerConfig {
             created_at: now,
             updated_at: now,
             first_launched_at: None,
+            log_invocations: true,
         }
     }
 }
 
+/// How an env var value is produced for the child MCP server process.
+///
+/// - `Secret`: resolved at runtime from the secret backend (vault / Keychain /
+///   1Password). The stored field is the secret id.
+/// - `Plaintext`: literal value baked into the server config. Used by the
+///   Import-from-clients flow when the user opts to keep an existing plaintext
+///   value instead of promoting it to the vault.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum EnvValue {
+    Secret { secret_ref: String },
+    Plaintext { value: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct EnvMapping {
     pub env_var_name: String,
+    pub value: EnvValue,
+    /// Legacy: keep old `secret_ref` key on serialized output so downgraded
+    /// binaries can still read the config. Mirrors `value` when it is a
+    /// `Secret`; empty for `Plaintext`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub secret_ref: String,
+}
+
+impl EnvMapping {
+    pub fn new_secret(env_var_name: String, secret_ref: String) -> Self {
+        Self {
+            env_var_name,
+            value: EnvValue::Secret {
+                secret_ref: secret_ref.clone(),
+            },
+            secret_ref,
+        }
+    }
+
+    pub fn new_plaintext(env_var_name: String, value: String) -> Self {
+        Self {
+            env_var_name,
+            value: EnvValue::Plaintext { value },
+            secret_ref: String::new(),
+        }
+    }
+}
+
+// Custom deserializer so old configs (`{"env_var_name": "X", "secret_ref": "id"}`)
+// still deserialize into the new `EnvValue::Secret` shape.
+impl<'de> Deserialize<'de> for EnvMapping {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            env_var_name: String,
+            #[serde(default)]
+            value: Option<EnvValue>,
+            #[serde(default)]
+            secret_ref: Option<String>,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        let (value, mirror) = match (raw.value, raw.secret_ref) {
+            (Some(EnvValue::Secret { secret_ref }), _) => {
+                let v = EnvValue::Secret {
+                    secret_ref: secret_ref.clone(),
+                };
+                (v, secret_ref)
+            }
+            (Some(EnvValue::Plaintext { value }), _) => {
+                (EnvValue::Plaintext { value }, String::new())
+            }
+            (None, Some(secret_ref)) => {
+                let v = EnvValue::Secret {
+                    secret_ref: secret_ref.clone(),
+                };
+                (v, secret_ref)
+            }
+            (None, None) => {
+                return Err(serde::de::Error::custom(
+                    "EnvMapping requires either `value` or legacy `secret_ref`",
+                ));
+            }
+        };
+        Ok(EnvMapping {
+            env_var_name: raw.env_var_name,
+            value,
+            secret_ref: mirror,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,6 +346,60 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: McpServerConfig = serde_json::from_str(&json).unwrap();
         assert!(back.sandbox_local);
+    }
+
+    #[test]
+    fn env_mapping_legacy_schema_deserializes() {
+        // Old `servers.json` rows used `{"env_var_name": "...", "secret_ref": "..."}`
+        // with no tagged `value` field. Must still parse into the new shape.
+        let legacy = r#"{"env_var_name":"GITHUB_TOKEN","secret_ref":"sec-1"}"#;
+        let parsed: EnvMapping = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.env_var_name, "GITHUB_TOKEN");
+        match parsed.value {
+            EnvValue::Secret { secret_ref } => assert_eq!(secret_ref, "sec-1"),
+            _ => panic!("expected Secret"),
+        }
+        assert_eq!(parsed.secret_ref, "sec-1");
+    }
+
+    #[test]
+    fn env_mapping_plaintext_round_trips() {
+        let m = EnvMapping::new_plaintext("FOO".to_string(), "bar".to_string());
+        let json = serde_json::to_string(&m).unwrap();
+        let back: EnvMapping = serde_json::from_str(&json).unwrap();
+        match back.value {
+            EnvValue::Plaintext { value } => assert_eq!(value, "bar"),
+            _ => panic!("expected Plaintext"),
+        }
+    }
+
+    #[test]
+    fn env_mapping_secret_round_trips_with_mirror() {
+        let m = EnvMapping::new_secret("FOO".to_string(), "sec-9".to_string());
+        let json = serde_json::to_string(&m).unwrap();
+        // Legacy mirror field present so downgraded binaries still resolve it.
+        assert!(json.contains("\"secret_ref\":\"sec-9\""));
+        let back: EnvMapping = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back.value, EnvValue::Secret { .. }));
+    }
+
+    #[test]
+    fn mcp_server_config_log_invocations_defaults_true() {
+        let legacy = r#"{
+            "id": "srv-1",
+            "name": "legacy",
+            "command": "npx",
+            "args": [],
+            "transport": {"type": "Stdio"},
+            "env_mappings": [],
+            "run_mode": {"type": "Local"},
+            "enabled": true,
+            "trusted": false,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let parsed: McpServerConfig = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.log_invocations);
     }
 
     #[test]

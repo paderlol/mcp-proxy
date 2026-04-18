@@ -59,6 +59,11 @@ pub fn audit_log_path() -> PathBuf {
     app_data_dir().join("audit.log")
 }
 
+/// Path to the invocation tracking SQLite DB.
+pub fn invocations_db_path() -> PathBuf {
+    app_data_dir().join("invocations.db")
+}
+
 /// Shared test-only mutex for tests that mutate `MCP_PROXY_DATA_DIR` (or
 /// anything else that resolves relative to it).
 ///

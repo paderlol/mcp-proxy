@@ -2,10 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AuditLogEntry,
   ClientConfigInfo,
+  DiscoveredServer,
   EnvMapping,
+  ImportResult,
+  ImportSelection,
+  InvocationSession,
   McpServerConfig,
   SecretEntry,
   SecretSource,
+  ToolCallRow,
   VaultStatus,
   WriteConfigResult,
 } from "./types";
@@ -63,6 +68,29 @@ export const writeClientConfig = (client: string) =>
 // Audit logs
 export const listAuditLogs = (limit = 50) =>
   invoke<AuditLogEntry[]>("list_audit_logs", { limit });
+
+// Invocation tracking (activity page)
+export const listInvocationSessions = (serverId?: string, limit = 100) =>
+  invoke<InvocationSession[]>("list_invocation_sessions", {
+    serverId,
+    limit,
+  });
+export const listInvocationToolCalls = (sessionId: number, limit = 500) =>
+  invoke<ToolCallRow[]>("list_invocation_tool_calls", {
+    sessionId,
+    limit,
+  });
+export const invocationCountsByTool = (serverId: string, sinceDays = 7) =>
+  invoke<Array<[string, number]>>("invocation_counts_by_tool", {
+    serverId,
+    sinceDays,
+  });
+
+// Import from existing AI-client configs
+export const discoverClientServers = () =>
+  invoke<DiscoveredServer[]>("discover_client_servers");
+export const importServers = (selections: ImportSelection[]) =>
+  invoke<ImportResult[]>("import_servers", { selections });
 
 // Vault / Local-secret lifecycle
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");

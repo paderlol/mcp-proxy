@@ -5,6 +5,7 @@ import {
   KeyRound,
   FileCode,
   Settings,
+  Activity as ActivityIcon,
 } from "lucide-react";
 
 const navItems = [
@@ -12,6 +13,7 @@ const navItems = [
   { to: "/servers", icon: Server, label: "Servers" },
   { to: "/secrets", icon: KeyRound, label: "Secrets" },
   { to: "/config", icon: FileCode, label: "Config" },
+  { to: "/activity", icon: ActivityIcon, label: "Activity" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

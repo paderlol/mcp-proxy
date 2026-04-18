@@ -26,6 +26,12 @@ Thumbs.db
 .claude/settings.local.json
 .claude/launch.json
 .claude/projects/
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Desktop-only icons; `tauri icon` generates mobile sets we don't ship
+/src-tauri/icons/android/
+/src-tauri/icons/ios/
 
 # ---------- Secrets (safety net) ----------
 .env
