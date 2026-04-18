@@ -234,7 +234,7 @@ export function ConfigGenerator() {
             ([key, info]) => (
               <PillButton
                 key={key}
-                variant={selectedClient === key ? "dark" : "outlined"}
+                variant={selectedClient === key ? "brand" : "outlined"}
                 onClick={() => setSelectedClient(key)}
               >
                 {info.label}
