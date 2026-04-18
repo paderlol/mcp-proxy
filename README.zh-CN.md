@@ -1,5 +1,11 @@
 # MCP Proxy
 
+[![CI](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/paderlol/mcp-proxy/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable-orange.svg?logo=rust)](https://www.rust-lang.org/)
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri)](https://tauri.app/)
+[![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 MCP (Model Context Protocol) Server 的密钥管理桌面应用和 CLI。
 
 MCP Proxy 的目标是让你只保存一次 API Key 或 Token，在桌面应用里完成服务配置和密钥映射，然后生成 AI 客户端配置文件，而不用把密钥明文写进 Claude Desktop、Codex、Cursor、VS Code 或 Windsurf 的配置中。
