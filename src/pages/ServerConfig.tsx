@@ -489,8 +489,8 @@ export function ServerConfig() {
                   className={inputClass}
                 />
                 {!dockerImage.trim() ? (
-                  <p className="text-xs text-warning flex items-center gap-1 px-1">
-                    <ShieldAlert size={12} className="inline" />
+                  <p className="text-xs text-warning px-1">
+                    <ShieldAlert size={12} className="inline mr-1 -mt-0.5" />
                     A base image is required for sandbox mode. Pick one with
                     the runtime your command needs (e.g.,{" "}
                     <code className="text-text-bright">node:20-alpine</code>{" "}
