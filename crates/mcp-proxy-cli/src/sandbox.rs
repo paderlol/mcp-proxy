@@ -73,14 +73,12 @@ pub enum SandboxNetwork {
     Blocked,
 }
 
-/// Generate the body of a `.sb` sandbox profile.
+/// Generate the body of a `.sb` sandbox profile, resolving `$HOME` from the
+/// process environment.
 ///
 /// `server_id` is used only to construct the per-server cache directory path
 /// inside the profile; it is escaped before being embedded.
 pub fn generate_profile(server_id: &str, cache_dir: &Path, network: SandboxNetwork) -> String {
-    let cache_path = escape_scheme_string(&cache_dir.display().to_string());
-    let sid = escape_scheme_string(server_id);
-
     // Resolve $HOME once at profile-gen time. `sandbox-exec(1)` in practice
     // does NOT support `(string-param "HOME" "/.ssh")` unless the caller also
     // passes `-D HOME=...`, which we don't — the form errors at load with
@@ -89,6 +87,21 @@ pub fn generate_profile(server_id: &str, cache_dir: &Path, network: SandboxNetwo
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    generate_profile_with_home(server_id, cache_dir, network, &home)
+}
+
+/// Same as [`generate_profile`] but with an explicit `home` — pure function,
+/// no environment lookup. Used by snapshot tests that need deterministic
+/// output.
+pub fn generate_profile_with_home(
+    server_id: &str,
+    cache_dir: &Path,
+    network: SandboxNetwork,
+    home: &Path,
+) -> String {
+    let cache_path = escape_scheme_string(&cache_dir.display().to_string());
+    let sid = escape_scheme_string(server_id);
+
     let home_str = home.display().to_string();
     let ssh = escape_scheme_string(&format!("{home_str}/.ssh"));
     let aws = escape_scheme_string(&format!("{home_str}/.aws"));
@@ -377,6 +390,98 @@ mod tests {
         assert!(
             in_str,
             "hostile `(allow default)` escaped its string literal: {cache_line:?}"
+        );
+    }
+
+    /// Full-profile snapshot with network allowed. Catches accidental
+    /// deletion / reordering / wording changes in *any* rule — `generate_profile`
+    /// is the security boundary, so even cosmetic churn should be intentional.
+    ///
+    /// Uses `generate_profile_with_home` so output is independent of the
+    /// developer's `$HOME`.
+    #[test]
+    fn snapshot_profile_network_allowed() {
+        let profile = generate_profile_with_home(
+            "srv-1",
+            Path::new("/cache/srv-1"),
+            SandboxNetwork::Allowed,
+            Path::new("/Users/tester"),
+        );
+        let expected = r#";; mcp-proxy sandbox profile for server "srv-1"
+;; Generated automatically — safe to audit or edit for a one-off run.
+
+(version 1)
+(deny default)
+(debug deny)
+
+;; ---- Process exec ----------------------------------------------------------
+;; npx / uvx / node / python spawn many helpers. Gate none of them.
+(allow process-exec*)
+(allow process-fork)
+(allow signal (target self))
+
+;; ---- Filesystem: read-mostly with a denylist ------------------------------
+;; Narrower allowlists break legitimate servers (dyld, site-packages, etc.),
+;; so we invert: allow broad reads and explicitly deny secret stores.
+(allow file-read*)
+(deny file-read*
+    (subpath "/Users/tester/.ssh")
+    (subpath "/Users/tester/.aws")
+    (subpath "/Users/tester/.config/gh")
+    (subpath "/Users/tester/.gnupg")
+    (subpath "/Users/tester/Library/Keychains")
+    (literal "/private/etc/master.passwd")
+    (literal "/etc/master.passwd")
+    (literal "/private/etc/sudoers"))
+
+;; ---- Filesystem: write is tightly scoped ----------------------------------
+(allow file-write*
+    (subpath "/private/tmp")
+    (subpath "/private/var/tmp")
+    (subpath "/private/var/folders")  ; $TMPDIR lives here on macOS
+    (subpath "/cache/srv-1"))
+;; stdin / stdout / stderr pipes — must stay writable so the MCP client can
+;; talk to the server over inherited stdio.
+(allow file-write-data (path "/dev/null"))
+(allow file-write-data (path "/dev/dtracehelper"))
+(allow file-ioctl (path "/dev/dtracehelper"))
+
+;; ---- IPC + syscall essentials ---------------------------------------------
+(allow mach-lookup)
+(allow mach-register)
+(allow ipc-posix-shm)
+(allow sysctl-read)
+(allow system-socket)
+(allow iokit-open)
+
+;; ---- Network --------------------------------------------------------------
+(allow network*)
+"#;
+        assert_eq!(profile, expected);
+    }
+
+    /// Same snapshot but with network blocked — verifies the network-rule
+    /// swap is the *only* delta between the two postures.
+    #[test]
+    fn snapshot_profile_network_blocked() {
+        let allowed = generate_profile_with_home(
+            "srv-1",
+            Path::new("/cache/srv-1"),
+            SandboxNetwork::Allowed,
+            Path::new("/Users/tester"),
+        );
+        let blocked = generate_profile_with_home(
+            "srv-1",
+            Path::new("/cache/srv-1"),
+            SandboxNetwork::Blocked,
+            Path::new("/Users/tester"),
+        );
+        let expected_diff_allowed = "(allow network*)";
+        let expected_diff_blocked = "; network denied by default";
+        assert_eq!(
+            allowed.replace(expected_diff_allowed, "<<NETWORK>>"),
+            blocked.replace(expected_diff_blocked, "<<NETWORK>>"),
+            "network posture should be the only difference between Allowed and Blocked profiles"
         );
     }
 

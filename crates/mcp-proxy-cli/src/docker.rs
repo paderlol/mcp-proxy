@@ -18,10 +18,20 @@
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+
+/// Resolve the `docker` binary to invoke. Defaults to `docker` on `PATH`.
+/// Overridable via `MCP_PROXY_DOCKER_BIN` for two reasons: (1) unusual host
+/// setups where the docker CLI lives somewhere odd, and (2) tests that point
+/// at a fake `docker` shell script so they can run without a real Docker
+/// daemon.
+fn docker_bin() -> OsString {
+    std::env::var_os("MCP_PROXY_DOCKER_BIN").unwrap_or_else(|| OsString::from("docker"))
+}
 
 /// Embedded agent source — baked into the CLI binary at compile time so
 /// deployed binaries are self-contained (no workspace lookup at runtime).
@@ -59,14 +69,15 @@ struct SecretPayload<'a> {
 /// Entry point called from `main.rs` when `RunMode::DockerSandbox`.
 /// Builds if needed, runs, shuttles stdio, waits, propagates exit code.
 pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
-    ensure_docker_available()?;
+    let bin = docker_bin();
+    ensure_docker_available(&bin)?;
 
     let tag = compute_image_tag(&cfg);
 
-    if !image_exists(&tag)? {
+    if !image_exists(&bin, &tag)? {
         let ctx_dir = cfg.build_root.join(sanitize_component(cfg.server_id));
         write_build_context(&ctx_dir, cfg.image)?;
-        docker_build(&ctx_dir, &tag)?;
+        docker_build(&bin, &ctx_dir, &tag)?;
     }
 
     let payload = SecretPayload {
@@ -75,7 +86,7 @@ pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
         args: cfg.args,
     };
 
-    docker_run_with_stdin_payload(&tag, cfg.extra_args, cfg.trusted, &payload)
+    docker_run_with_stdin_payload(&bin, &tag, cfg.extra_args, cfg.trusted, &payload)
 }
 
 // ---------------------------------------------------------------------------
@@ -146,8 +157,8 @@ pub(crate) fn resolve_log_driver_flag(extra_args: &[String]) -> Option<&'static 
 // docker CLI detection
 // ---------------------------------------------------------------------------
 
-fn ensure_docker_available() -> Result<(), String> {
-    match Command::new("docker").arg("--version").output() {
+fn ensure_docker_available(bin: &OsStr) -> Result<(), String> {
+    match Command::new(bin).arg("--version").output() {
         Ok(o) if o.status.success() => Ok(()),
         Ok(o) => Err(format!(
             "`docker --version` failed: {}",
@@ -269,17 +280,17 @@ fn write_build_context(ctx_dir: &Path, user_image: &str) -> Result<(), String> {
 // docker image ops
 // ---------------------------------------------------------------------------
 
-fn image_exists(tag: &str) -> Result<bool, String> {
-    let output = Command::new("docker")
+fn image_exists(bin: &OsStr, tag: &str) -> Result<bool, String> {
+    let output = Command::new(bin)
         .args(["image", "inspect", tag])
         .output()
         .map_err(|e| format!("Failed to invoke `docker image inspect`: {e}"))?;
     Ok(output.status.success())
 }
 
-fn docker_build(ctx_dir: &Path, tag: &str) -> Result<(), String> {
+fn docker_build(bin: &OsStr, ctx_dir: &Path, tag: &str) -> Result<(), String> {
     eprintln!("mcp-proxy: building sandbox image {tag} (first build may take ~2 min)");
-    let status = Command::new("docker")
+    let status = Command::new(bin)
         .args(["build", "-t", tag])
         .arg(ctx_dir)
         // Inherit stderr/stdout so the user sees docker build output in real time
@@ -301,24 +312,30 @@ fn docker_build(ctx_dir: &Path, tag: &str) -> Result<(), String> {
 // docker run + stdio shuttle
 // ---------------------------------------------------------------------------
 
+/// Pure argv construction for `docker run …` — extracted so tests can assert
+/// the exact flag order without spinning up a Docker daemon.
+pub(crate) fn build_run_argv(tag: &str, extra_args: &[String], trusted: bool) -> Vec<String> {
+    let mut argv = vec!["run".to_string(), "-i".to_string(), "--rm".to_string()];
+    if let Some(flag) = resolve_log_driver_flag(extra_args) {
+        argv.push(flag.to_string());
+    }
+    if let Some(flag) = resolve_network_flag(trusted, extra_args) {
+        argv.push(flag.to_string());
+    }
+    argv.extend(extra_args.iter().cloned());
+    argv.push(tag.to_string());
+    argv
+}
+
 fn docker_run_with_stdin_payload(
+    bin: &OsStr,
     tag: &str,
     extra_args: &[String],
     trusted: bool,
     payload: &SecretPayload,
 ) -> Result<(), String> {
-    let mut cmd = Command::new("docker");
-    cmd.args(["run", "-i", "--rm"]);
-    if let Some(flag) = resolve_log_driver_flag(extra_args) {
-        cmd.arg(flag);
-    }
-    if let Some(flag) = resolve_network_flag(trusted, extra_args) {
-        cmd.arg(flag);
-    }
-    for a in extra_args {
-        cmd.arg(a);
-    }
-    cmd.arg(tag);
+    let mut cmd = Command::new(bin);
+    cmd.args(build_run_argv(tag, extra_args, trusted));
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -684,6 +701,193 @@ mod tests {
 
         let agent_main = fs::read_to_string(ctx.join("agent-src/src/main.rs")).unwrap();
         assert_eq!(agent_main, AGENT_MAIN_RS);
+    }
+
+    // --- build_run_argv (pure) -------------------------------------------
+
+    #[test]
+    fn build_run_argv_untrusted_default_injects_log_and_network_none() {
+        let argv = build_run_argv("tag:abc", &[], false);
+        assert_eq!(
+            argv,
+            vec![
+                "run".to_string(),
+                "-i".into(),
+                "--rm".into(),
+                "--log-driver=none".into(),
+                "--network=none".into(),
+                "tag:abc".into(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_run_argv_trusted_omits_network_but_still_gates_logs() {
+        let argv = build_run_argv("tag:abc", &[], true);
+        assert_eq!(
+            argv,
+            vec![
+                "run".to_string(),
+                "-i".into(),
+                "--rm".into(),
+                "--log-driver=none".into(),
+                "tag:abc".into(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_run_argv_preserves_extra_args_order_after_defaults() {
+        // extra_args land after our injected defaults but before the image tag.
+        let extra = vec!["-v".to_string(), "/tmp:/tmp".into(), "--memory=256m".into()];
+        let argv = build_run_argv("tag:abc", &extra, true);
+        assert_eq!(
+            argv,
+            vec![
+                "run".to_string(),
+                "-i".into(),
+                "--rm".into(),
+                "--log-driver=none".into(),
+                "-v".into(),
+                "/tmp:/tmp".into(),
+                "--memory=256m".into(),
+                "tag:abc".into(),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_run_argv_operator_overrides_win() {
+        // Explicit operator flags must suppress our injected defaults.
+        let extra = vec![
+            "--log-driver=json-file".to_string(),
+            "--network=host".into(),
+        ];
+        let argv = build_run_argv("tag:abc", &extra, false);
+        assert_eq!(
+            argv,
+            vec![
+                "run".to_string(),
+                "-i".into(),
+                "--rm".into(),
+                "--log-driver=json-file".into(),
+                "--network=host".into(),
+                "tag:abc".into(),
+            ]
+        );
+    }
+
+    // --- Fake-docker integration -----------------------------------------
+    //
+    // These tests plant a shell script that impersonates `docker`, then pass
+    // its path to the refactored primitives. CI can run them without a real
+    // Docker daemon. Unix-only — the approach relies on `#!/bin/sh` shebangs.
+
+    #[cfg(unix)]
+    mod fake_docker {
+        use super::super::*;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
+        use tempfile::TempDir;
+
+        /// Drop a minimal shell script at `<dir>/fake-docker.sh` with the given
+        /// body and return its path. The script is marked executable so
+        /// `Command::new(path)` can launch it directly.
+        fn write_fake(dir: &Path, body: &str) -> PathBuf {
+            let path = dir.join("fake-docker.sh");
+            let full = format!("#!/bin/sh\n{body}\n");
+            fs::write(&path, full).unwrap();
+            let mut perms = fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms).unwrap();
+            path
+        }
+
+        #[test]
+        fn ensure_available_happy_path() {
+            let tmp = TempDir::new().unwrap();
+            let bin = write_fake(
+                tmp.path(),
+                r#"if [ "$1" = "--version" ]; then
+  echo "Docker version fake"
+  exit 0
+fi
+exit 99"#,
+            );
+            ensure_docker_available(bin.as_os_str()).expect("version check should succeed");
+        }
+
+        #[test]
+        fn ensure_available_reports_nonzero_exit() {
+            let tmp = TempDir::new().unwrap();
+            let bin = write_fake(tmp.path(), r#"echo "no daemon" 1>&2; exit 1"#);
+            let err = ensure_docker_available(bin.as_os_str()).unwrap_err();
+            assert!(
+                err.contains("no daemon"),
+                "stderr from fake docker should surface in the error: {err}"
+            );
+        }
+
+        #[test]
+        fn ensure_available_reports_missing_binary() {
+            let missing = Path::new("/definitely/not/a/real/docker/path");
+            let err = ensure_docker_available(missing.as_os_str()).unwrap_err();
+            assert!(
+                err.contains("not installed") || err.contains("not on PATH"),
+                "missing binary should produce the install-docker hint: {err}"
+            );
+        }
+
+        #[test]
+        fn image_exists_true_when_fake_exits_zero() {
+            let tmp = TempDir::new().unwrap();
+            let bin = write_fake(tmp.path(), "exit 0");
+            assert!(image_exists(bin.as_os_str(), "whatever:tag").unwrap());
+        }
+
+        #[test]
+        fn image_exists_false_when_fake_exits_nonzero() {
+            let tmp = TempDir::new().unwrap();
+            let bin = write_fake(tmp.path(), "exit 1");
+            assert!(!image_exists(bin.as_os_str(), "whatever:tag").unwrap());
+        }
+
+        /// Fake docker records the argv it sees to a file so the test can
+        /// verify flag order end-to-end. This is the closest we can get to a
+        /// Docker integration test on CI without a daemon.
+        #[test]
+        fn docker_build_invokes_bin_with_expected_argv() {
+            let tmp = TempDir::new().unwrap();
+            let log = tmp.path().join("argv.log");
+            let log_str = log.display().to_string();
+            let bin = write_fake(
+                tmp.path(),
+                &format!(
+                    r#"printf '%s\n' "$@" > "{log_str}"
+exit 0"#
+                ),
+            );
+            let ctx = tmp.path().join("ctx");
+            fs::create_dir_all(&ctx).unwrap();
+            docker_build(bin.as_os_str(), &ctx, "mcp-proxy-local/srv:abc").expect("build ok");
+
+            let recorded = fs::read_to_string(&log).unwrap();
+            let lines: Vec<&str> = recorded.lines().collect();
+            assert_eq!(lines[0], "build");
+            assert_eq!(lines[1], "-t");
+            assert_eq!(lines[2], "mcp-proxy-local/srv:abc");
+            assert_eq!(lines[3], ctx.display().to_string());
+        }
+
+        #[test]
+        fn docker_build_propagates_nonzero_exit() {
+            let tmp = TempDir::new().unwrap();
+            let bin = write_fake(tmp.path(), r#"echo "build broke" 1>&2; exit 42"#);
+            let ctx = tmp.path().join("ctx");
+            fs::create_dir_all(&ctx).unwrap();
+            let err = docker_build(bin.as_os_str(), &ctx, "x:y").unwrap_err();
+            assert!(err.contains("42"), "exit code should be reported: {err}");
+        }
     }
 
     #[test]

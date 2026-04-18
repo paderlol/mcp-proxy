@@ -57,6 +57,7 @@ Repository-local workflow rules in this file also override any generic agent def
 - Run the smallest relevant test set before committing. If tests are skipped, say so in the PR description.
 - Never commit secrets, generated local credentials, `.env` files, or machine-specific config.
 - Prefer squash merging the PR unless the branch history is intentionally structured and easy to review.
+- Do not add `Co-Authored-By` trailers, "Generated with …" lines, or any other co-contributor / tool-attribution markers to commit messages or PR bodies. Every commit has a single author — the human running the session — and the message body should only describe the change.
 
 ## Commit Message Format
 
@@ -94,3 +95,5 @@ Repository-local workflow rules in this file also override any generic agent def
 - If the current checkout is already on a task branch, continue there only when the work is clearly the same scope.
 - If the workspace contains unrelated user changes, do not revert them; work around them or ask before touching them.
 - When creating commits, use the commit message format in this file.
+- If the current worktree or session was created on a branch with a disallowed prefix (e.g. `devops/…`, auto-generated session names), rename the branch to a compliant `<type>/<scope>-<desc>` name *before* the first commit — do not commit on a non-compliant branch.
+- Never add co-author, "Generated with Claude Code", or similar attribution trailers to commit messages or PR descriptions.
