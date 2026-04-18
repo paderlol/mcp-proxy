@@ -14,7 +14,8 @@ mod sandbox;
 
 use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
-use mcp_proxy_common::models::{McpServerConfig, RunMode, SecretMeta};
+use mcp_proxy_common::invocation_log::{Direction, InvocationLogger, LoggerHandle};
+use mcp_proxy_common::models::{EnvValue, McpServerConfig, RunMode, SecretMeta};
 use mcp_proxy_common::secret_resolver::resolve_secret;
 use mcp_proxy_common::store::{
     app_data_dir, load_json, save_json, secrets_meta_path, servers_path,
@@ -180,42 +181,49 @@ fn run_server(server_id: &str) -> Result<(), String> {
 
     let mut env_vars: HashMap<String, String> = HashMap::new();
     for mapping in &config.env_mappings {
-        let meta = secret_metas
-            .iter()
-            .find(|m| m.id == mapping.secret_ref)
-            .ok_or_else(|| {
-                format!(
-                    "Secret '{}' referenced by env var '{}' not found",
-                    mapping.secret_ref, mapping.env_var_name
-                )
-            })?;
+        match &mapping.value {
+            EnvValue::Plaintext { value } => {
+                env_vars.insert(mapping.env_var_name.clone(), value.clone());
+            }
+            EnvValue::Secret { secret_ref } => {
+                let meta = secret_metas
+                    .iter()
+                    .find(|m| m.id == *secret_ref)
+                    .ok_or_else(|| {
+                        format!(
+                            "Secret '{}' referenced by env var '{}' not found",
+                            secret_ref, mapping.env_var_name
+                        )
+                    })?;
 
-        tracing::debug!(
-            "Resolving secret '{}' for env var '{}'",
-            meta.id,
-            mapping.env_var_name
-        );
+                tracing::debug!(
+                    "Resolving secret '{}' for env var '{}'",
+                    meta.id,
+                    mapping.env_var_name
+                );
 
-        let resolved = runtime.block_on(resolve_secret(&meta.id, &meta.source));
-        let source_name = match &meta.source {
-            mcp_proxy_common::models::SecretSource::Local => "Local",
-            mcp_proxy_common::models::SecretSource::OnePassword { .. } => "OnePassword",
-        };
-        let status = match &resolved {
-            Ok(_) => AuditStatus::Success,
-            Err(err) => AuditStatus::Error(err.clone()),
-        };
-        if let Err(err) = append_audit_log(&AuditLogEntry {
-            timestamp: chrono::Utc::now(),
-            server_id: config.id.clone(),
-            secret_id: meta.id.clone(),
-            source: source_name.to_string(),
-            status,
-        }) {
-            tracing::warn!("failed to append audit log: {err}");
+                let resolved = runtime.block_on(resolve_secret(&meta.id, &meta.source));
+                let source_name = match &meta.source {
+                    mcp_proxy_common::models::SecretSource::Local => "Local",
+                    mcp_proxy_common::models::SecretSource::OnePassword { .. } => "OnePassword",
+                };
+                let status = match &resolved {
+                    Ok(_) => AuditStatus::Success,
+                    Err(err) => AuditStatus::Error(err.clone()),
+                };
+                if let Err(err) = append_audit_log(&AuditLogEntry {
+                    timestamp: chrono::Utc::now(),
+                    server_id: config.id.clone(),
+                    secret_id: meta.id.clone(),
+                    source: source_name.to_string(),
+                    status,
+                }) {
+                    tracing::warn!("failed to append audit log: {err}");
+                }
+                let value = resolved?;
+                env_vars.insert(mapping.env_var_name.clone(), value);
+            }
         }
-        let value = resolved?;
-        env_vars.insert(mapping.env_var_name.clone(), value);
     }
 
     tracing::info!(
@@ -233,9 +241,33 @@ fn run_server(server_id: &str) -> Result<(), String> {
         }
     }
 
-    // 4. Dispatch based on run mode
-    match &config.run_mode {
-        RunMode::Local => spawn_local(&config, env_vars),
+    // 4. Open an invocation logging session (best-effort). Keeps a SQLite
+    //    row per run plus per-JSON-RPC-line records when stdio is teed below.
+    let run_mode_label = match &config.run_mode {
+        RunMode::Local => {
+            if config.sandbox_local {
+                "local-sandbox"
+            } else {
+                "local"
+            }
+        }
+        RunMode::DockerSandbox { .. } => "docker",
+    };
+    let logger = if config.log_invocations {
+        match InvocationLogger::start(&config.id, run_mode_label) {
+            Ok(l) => Some(l),
+            Err(e) => {
+                tracing::warn!("invocation logger disabled: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 5. Dispatch based on run mode
+    let result = match &config.run_mode {
+        RunMode::Local => spawn_local(&config, env_vars, logger.as_ref()),
         RunMode::DockerSandbox { image, extra_args } => {
             let image = image.as_deref().ok_or_else(|| {
                 "Docker sandbox requires a base image — edit the server config and set one \
@@ -243,17 +275,33 @@ fn run_server(server_id: &str) -> Result<(), String> {
                     .to_string()
             })?;
             let build_root = app_data_dir().join("docker-build");
-            docker::run_sandbox(docker::SandboxConfig {
-                server_id: &config.id,
-                image,
-                command: &config.command,
-                args: &config.args,
-                env_vars: &env_vars,
-                extra_args,
-                trusted: config.trusted,
-                build_root: &build_root,
-            })
+            docker::run_sandbox(
+                docker::SandboxConfig {
+                    server_id: &config.id,
+                    image,
+                    command: &config.command,
+                    args: &config.args,
+                    env_vars: &env_vars,
+                    extra_args,
+                    trusted: config.trusted,
+                    build_root: &build_root,
+                },
+                logger.as_ref(),
+            )
         }
+    };
+
+    let (exit_code, error) = match &result {
+        Ok(code) => (Some(*code), None),
+        Err(e) => (None, Some(e.clone())),
+    };
+    if let Some(l) = logger {
+        l.finish(exit_code, error);
+    }
+    match result {
+        Ok(0) => Ok(()),
+        Ok(code) => std::process::exit(code),
+        Err(e) => Err(e),
     }
 }
 
@@ -280,7 +328,11 @@ fn record_first_launch(server_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> Result<(), String> {
+fn spawn_local(
+    config: &McpServerConfig,
+    env_vars: HashMap<String, String>,
+    logger: Option<&InvocationLogger>,
+) -> Result<i32, String> {
     // Build the child command. On macOS, if the server opts into local
     // sandboxing, wrap the real command in `sandbox-exec -f <profile>`. The
     // `TempProfile` guard lives until after `child.wait()` returns so the
@@ -302,27 +354,116 @@ fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> R
     #[cfg(not(target_os = "macos"))]
     cmd.args(&config.args);
 
-    // Inherit stdio: AI client's stdin/stdout IS our stdin/stdout,
-    // and the child inherits them directly. MCP protocol traffic flows through
-    // without any manual piping on our side.
+    // When logging is enabled, pipe stdio and run line-oriented tee threads so
+    // we can record JSON-RPC traffic. Otherwise inherit stdio for zero-overhead
+    // passthrough (the original behavior).
+    let piped = logger.is_some();
+    cmd.envs(&env_vars);
+    if piped {
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+    } else {
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    }
+
     let mut child = cmd
-        .envs(&env_vars)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("Failed to spawn '{}': {e}", config.command))?;
+
+    if piped {
+        let handle = logger
+            .and_then(|l| l.handle())
+            .ok_or_else(|| "logger handle unavailable".to_string())?;
+        pump_stdio(&mut child, handle)?;
+    }
 
     let status = child
         .wait()
         .map_err(|e| format!("Failed to wait for child process: {e}"))?;
 
-    if !status.success() {
-        let code = status.code().unwrap_or(1);
-        std::process::exit(code);
-    }
+    Ok(status
+        .code()
+        .unwrap_or(if status.success() { 0 } else { 1 }))
+}
+
+/// Line-oriented stdio tee. Reads host stdin → child stdin (logged as
+/// `request`/`notification`) on one thread, child stdout → host stdout
+/// (logged as `response`) on another. Both threads hold clones of the
+/// logger handle by reading from `InvocationLogger`'s internal channel
+/// pointer — we pass a raw pointer via `std::thread::scope`-style sharing.
+fn pump_stdio(child: &mut std::process::Child, handle: LoggerHandle) -> Result<(), String> {
+    use std::io::{BufRead, BufReader, Write};
+
+    let child_stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "child stdin pipe missing".to_string())?;
+    let child_stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "child stdout pipe missing".to_string())?;
+
+    // host stdin → child stdin
+    let h_in = handle.clone();
+    std::thread::spawn(move || {
+        let mut child_stdin = child_stdin;
+        let host_stdin = std::io::stdin();
+        let mut reader = BufReader::new(host_stdin.lock());
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+            let direction = if line_has_id(&line) {
+                Direction::Request
+            } else {
+                Direction::Notification
+            };
+            h_in.record_line(direction, line.trim_end_matches('\n'));
+            if child_stdin.write_all(line.as_bytes()).is_err() {
+                break;
+            }
+            let _ = child_stdin.flush();
+        }
+    });
+
+    // child stdout → host stdout
+    let h_out = handle;
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(child_stdout);
+        let stdout = std::io::stdout();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+            h_out.record_line(Direction::Response, line.trim_end_matches('\n'));
+            let mut lock = stdout.lock();
+            if lock.write_all(line.as_bytes()).is_err() {
+                break;
+            }
+            let _ = lock.flush();
+        }
+    });
 
     Ok(())
+}
+
+fn line_has_id(line: &str) -> bool {
+    // Cheap heuristic — parse and check. Tolerant of non-JSON (returns false).
+    serde_json::from_str::<serde_json::Value>(line.trim())
+        .ok()
+        .and_then(|v| v.get("id").cloned())
+        .is_some()
 }
 
 /// macOS-only: build the `Command` used for Local run mode, wrapping the real

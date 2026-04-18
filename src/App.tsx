@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { ServerConfig } from "./pages/ServerConfig";
 import { SecretsManager } from "./pages/SecretsManager";
 import { ConfigGenerator } from "./pages/ConfigGenerator";
+import { Activity } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 import { useVault } from "./hooks/useVault";
 import { useIdleLock } from "./hooks/useIdleLock";
@@ -36,6 +37,7 @@ function App() {
         <Route path="/servers" element={<ServerConfig />} />
         <Route path="/secrets" element={<SecretsManager />} />
         <Route path="/config" element={<ConfigGenerator />} />
+        <Route path="/activity" element={<Activity />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </div>

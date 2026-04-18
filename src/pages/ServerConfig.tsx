@@ -6,6 +6,7 @@ import { SearchInput } from "../components/ui/SearchInput";
 import { Modal } from "../components/ui/Modal";
 import { Badge } from "../components/ui/Badge";
 import { RegistryBrowser } from "../components/servers/RegistryBrowser";
+import { ImportFromClients } from "../components/servers/ImportFromClients";
 import {
   Plus,
   Server,
@@ -19,6 +20,7 @@ import {
   X,
   Pencil,
   Network,
+  Download,
 } from "lucide-react";
 import { useServers } from "../hooks/useServers";
 import { useSecrets } from "../hooks/useSecrets";
@@ -35,6 +37,7 @@ export function ServerConfig() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [showRegistry, setShowRegistry] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [prefillEntry, setPrefillEntry] = useState<RegistryEntry | null>(null);
   // null = adding a new server; non-null = editing this existing server
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(
@@ -142,7 +145,7 @@ export function ServerConfig() {
     try {
       // Filter out incomplete mappings (empty env var name or secret ref)
       const validMappings = envMappings.filter(
-        (m) => m.env_var_name.trim() && m.secret_ref.trim(),
+        (m) => m.env_var_name.trim() && (m.secret_ref ?? "").trim(),
       );
       const argList = args.split(/\s+/).filter((a) => a.length > 0);
 
@@ -229,6 +232,10 @@ export function ServerConfig() {
       description="Configure MCP servers and their environment variables"
       actions={
         <>
+          <PillButton variant="outlined" onClick={() => setShowImport(true)}>
+            <Download size={14} className="mr-1.5" />
+            Import from clients
+          </PillButton>
           <PillButton variant="outlined" onClick={() => setShowRegistry(true)}>
             <LibraryBig size={14} className="mr-1.5" />
             Browse
@@ -700,6 +707,15 @@ export function ServerConfig() {
         onInstall={handleInstallFromRegistry}
       />
 
+      <ImportFromClients
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => {
+          fetchServers();
+          fetchSecrets();
+        }}
+      />
+
       <Modal
         open={pendingSave}
         onClose={() => setPendingSave(false)}
@@ -736,7 +752,7 @@ export function ServerConfig() {
             <p className="text-sm font-bold text-text-primary">
               Secrets this server can access
             </p>
-            {envMappings.filter((m) => m.env_var_name.trim() && m.secret_ref.trim())
+            {envMappings.filter((m) => m.env_var_name.trim() && (m.secret_ref ?? "").trim())
               .length === 0 ? (
               <p className="text-xs text-text-secondary">
                 No secrets mapped yet.
@@ -744,7 +760,7 @@ export function ServerConfig() {
             ) : (
               <ul className="flex flex-col gap-1">
                 {envMappings
-                  .filter((m) => m.env_var_name.trim() && m.secret_ref.trim())
+                  .filter((m) => m.env_var_name.trim() && (m.secret_ref ?? "").trim())
                   .map((mapping) => {
                     const secret = secrets.find((s) => s.id === mapping.secret_ref);
                     return (

@@ -270,6 +270,7 @@ export function Settings() {
                 }}
                 disabled={busy || switchToKeychainBlockedByLock}
                 aria-label={switchButtonLabel}
+                className="whitespace-nowrap shrink-0"
               >
                 <Shuffle size={12} className="mr-1" />
                 {switchButtonLabel}

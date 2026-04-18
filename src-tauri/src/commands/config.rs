@@ -141,10 +141,10 @@ mod tests {
         );
         config.id = id.to_string(); // fix id instead of UUID for stable tests
         config.run_mode = RunMode::Local;
-        config.env_mappings = vec![EnvMapping {
-            env_var_name: "TOKEN".to_string(),
-            secret_ref: "tok".to_string(),
-        }];
+        config.env_mappings = vec![EnvMapping::new_secret(
+            "TOKEN".to_string(),
+            "tok".to_string(),
+        )];
         config
     }
 

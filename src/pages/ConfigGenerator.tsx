@@ -107,15 +107,16 @@ export function ConfigGenerator() {
   const untrustedServers = servers.filter((server) => !server.trusted);
   const untrustedSecretMappings = untrustedServers.flatMap((server) =>
     server.env_mappings
-      .filter((mapping) => mapping.env_var_name.trim() && mapping.secret_ref.trim())
+      .filter((mapping) => mapping.env_var_name.trim() && (mapping.secret_ref ?? "").trim())
       .map((mapping) => ({
         serverId: server.id,
         serverName: server.name,
         envVarName: mapping.env_var_name,
-        secretRef: mapping.secret_ref,
+        secretRef: mapping.secret_ref ?? "",
         secretLabel:
           secrets.find((secret) => secret.id === mapping.secret_ref)?.label ??
-          mapping.secret_ref,
+          mapping.secret_ref ??
+          "",
       })),
   );
 

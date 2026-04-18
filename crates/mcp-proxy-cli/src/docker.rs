@@ -16,6 +16,7 @@
 //! Secrets never reach the command line, env file, image layer, or
 //! `docker inspect` output.
 
+use mcp_proxy_common::invocation_log::{Direction, InvocationLogger, LoggerHandle};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -68,7 +69,7 @@ struct SecretPayload<'a> {
 
 /// Entry point called from `main.rs` when `RunMode::DockerSandbox`.
 /// Builds if needed, runs, shuttles stdio, waits, propagates exit code.
-pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
+pub fn run_sandbox(cfg: SandboxConfig, logger: Option<&InvocationLogger>) -> Result<i32, String> {
     let bin = docker_bin();
     ensure_docker_available(&bin)?;
 
@@ -86,7 +87,14 @@ pub fn run_sandbox(cfg: SandboxConfig) -> Result<(), String> {
         args: cfg.args,
     };
 
-    docker_run_with_stdin_payload(&bin, &tag, cfg.extra_args, cfg.trusted, &payload)
+    docker_run_with_stdin_payload(
+        &bin,
+        &tag,
+        cfg.extra_args,
+        cfg.trusted,
+        &payload,
+        logger.and_then(|l| l.handle()),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -333,20 +341,24 @@ fn docker_run_with_stdin_payload(
     extra_args: &[String],
     trusted: bool,
     payload: &SecretPayload,
-) -> Result<(), String> {
+    logger: Option<LoggerHandle>,
+) -> Result<i32, String> {
     let mut cmd = Command::new(bin);
     cmd.args(build_run_argv(tag, extra_args, trusted));
+    // When logging is on, pipe stdout so we can tee JSON-RPC responses too.
+    let tee = logger.is_some();
     cmd.stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
+        .stdout(if tee {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        })
         .stderr(Stdio::inherit());
 
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to invoke `docker run`: {e}"))?;
 
-    // Write the secret payload as the first line. The agent reads exactly one
-    // line, so we include a trailing newline and then let the remaining stdio
-    // flow from the AI client's stdin into the container.
     let mut child_stdin = child
         .stdin
         .take()
@@ -366,26 +378,82 @@ fn docker_run_with_stdin_payload(
     }
 
     // After the secret line, the rest of the host's stdin is the AI client's
-    // MCP traffic. Pump it into the container in a dedicated thread so we can
-    // wait on the child in the main thread.
-    let pump = std::thread::spawn(move || {
-        let mut host_stdin = std::io::stdin();
-        let _ = std::io::copy(&mut host_stdin, &mut child_stdin);
-        // Dropping child_stdin closes the pipe so the container can see EOF.
-    });
+    // MCP traffic. When logging is on, tee it line-by-line so we can record
+    // requests; otherwise just bulk-copy bytes (original behavior).
+    let pump = if let Some(h) = logger.clone() {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader, Write};
+            let host_stdin = std::io::stdin();
+            let mut reader = BufReader::new(host_stdin.lock());
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+                let is_req = serde_json::from_str::<serde_json::Value>(line.trim())
+                    .ok()
+                    .and_then(|v| v.get("id").cloned())
+                    .is_some();
+                h.record_line(
+                    if is_req {
+                        Direction::Request
+                    } else {
+                        Direction::Notification
+                    },
+                    line.trim_end_matches('\n'),
+                );
+                if child_stdin.write_all(line.as_bytes()).is_err() {
+                    break;
+                }
+                let _ = child_stdin.flush();
+            }
+        })
+    } else {
+        std::thread::spawn(move || {
+            let mut host_stdin = std::io::stdin();
+            let _ = std::io::copy(&mut host_stdin, &mut child_stdin);
+        })
+    };
+
+    // child stdout → host stdout (tee'd only when logger is on)
+    if let Some(h) = logger {
+        let child_stdout = child.stdout.take();
+        if let Some(mut out) = child_stdout {
+            std::thread::spawn(move || {
+                use std::io::{BufRead, BufReader, Read, Write};
+                let _ = &mut out as &mut dyn Read;
+                let mut reader = BufReader::new(out);
+                let mut line = String::new();
+                let stdout = std::io::stdout();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                    h.record_line(Direction::Response, line.trim_end_matches('\n'));
+                    let mut lock = stdout.lock();
+                    if lock.write_all(line.as_bytes()).is_err() {
+                        break;
+                    }
+                    let _ = lock.flush();
+                }
+            });
+        }
+    }
 
     let status = child
         .wait()
         .map_err(|e| format!("Failed to wait on container: {e}"))?;
-
-    // The pump thread will finish when host stdin hits EOF or the child exits.
-    // Best-effort join; don't block forever on a stuck reader.
     let _ = pump.join();
 
-    if !status.success() {
-        std::process::exit(status.code().unwrap_or(1));
-    }
-    Ok(())
+    Ok(status
+        .code()
+        .unwrap_or(if status.success() { 0 } else { 1 }))
 }
 
 // ---------------------------------------------------------------------------
