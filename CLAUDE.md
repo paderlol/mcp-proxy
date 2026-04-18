@@ -72,7 +72,7 @@ npm run test:e2e:ui              # interactive debugger
 MCP_PROXY_DATA_DIR=/tmp/mcp-proxy-profile ./target/release/mcp-proxy list
 ```
 
-See [TEST_RULES.md](TEST_RULES.md) for the full testing policy and
+See [docs/TEST_RULES.md](docs/TEST_RULES.md) for the full testing policy and
 [docs/e2e-manual.md](docs/e2e-manual.md) for manual AI-client verification.
 
 ## Project Structure
@@ -94,7 +94,7 @@ mcp-proxy/
 │   └── lib/                    # Tauri invoke wrappers, type definitions
 ├── crates/
 │   └── mcp-proxy-common/       # Shared data types (models)
-└── DESIGN.md                   # UI design system (Spotify-inspired dark theme)
+└── docs/DESIGN.md              # UI design system (Spotify-inspired dark theme)
 ```
 
 ## Cargo Workspace
@@ -106,7 +106,7 @@ Three crates:
 
 ## Design System
 
-See `DESIGN.md`. Key points:
+See `docs/DESIGN.md`. Key points:
 - **Dark theme**: backgrounds `#121212` / `#181818` / `#1f1f1f`
 - **Brand color**: `#1ed760` (functional highlights only — CTAs, active states)
 - **Buttons**: Pill shape (radius 500px–9999px), uppercase + wide letter-spacing

@@ -5,9 +5,9 @@ Thanks for your interest. Issues and pull requests are welcome.
 ## Quick orientation
 
 - **Architecture**: see [CLAUDE.md](CLAUDE.md) — data model, crate boundaries, run modes, the three secret backends, and the Docker sandbox design.
-- **UI system**: see [DESIGN.md](DESIGN.md) — Spotify-inspired dark theme with specific typography, spacing, and component rules. Follow this for any new UI work.
-- **Testing policy**: see [TEST_RULES.md](TEST_RULES.md) — §3 lists tests that are **mandatory** for specific kinds of changes. Read it before opening a PR that touches data models, secret handling, the CLI, or file-writing commands.
-- **Known security gaps**: see [SECURITY_TODO.md](SECURITY_TODO.md) — if your change touches any item listed there, mention it in the PR description.
+- **UI system**: see [docs/DESIGN.md](docs/DESIGN.md) — Spotify-inspired dark theme with specific typography, spacing, and component rules. Follow this for any new UI work.
+- **Testing policy**: see [docs/TEST_RULES.md](docs/TEST_RULES.md) — §3 lists tests that are **mandatory** for specific kinds of changes. Read it before opening a PR that touches data models, secret handling, the CLI, or file-writing commands.
+- **Known security gaps**: see [docs/SECURITY_TODO.md](docs/SECURITY_TODO.md) — if your change touches any item listed there, mention it in the PR description.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ Before submitting:
 - [ ] `npm run build` passes (TypeScript strict + Vite)
 - [ ] `cargo fmt --all -- --check` passes
 - [ ] `cargo clippy --workspace -- -D warnings` has no new warnings
-- [ ] New code paths have tests per [TEST_RULES.md §3](TEST_RULES.md)
+- [ ] New code paths have tests per [TEST_RULES.md §3](docs/TEST_RULES.md)
 - [ ] No secrets or personal paths in committed files
 
 CI runs the same checks on every push.
@@ -69,7 +69,7 @@ CI runs the same checks on every push.
 
 - First line: imperative, ≤ 70 chars (e.g., "Add AES-GCM vault backend")
 - Body: explain *why*, not just what — link issues, mention tradeoffs
-- Reference any `TEST_RULES.md` / `SECURITY_TODO.md` item the PR touches
+- Reference any `docs/TEST_RULES.md` / `docs/SECURITY_TODO.md` item the PR touches
 
 ## Project scope
 

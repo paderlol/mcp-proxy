@@ -340,7 +340,7 @@ pub enum ServerStatus {
 // Tests
 // ---------------------------------------------------------------------------
 //
-// These tests enforce the contracts described in TEST_RULES.md §3.1:
+// These tests enforce the contracts described in docs/TEST_RULES.md §3.1:
 // any serde change to these types must round-trip and preserve aliases.
 
 #[cfg(test)]

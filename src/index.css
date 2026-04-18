@@ -48,7 +48,7 @@
 
 /* Global base styles */
 html {
-  /* 16px root — aligns Tailwind's rem-based `text-*` scale with DESIGN.md
+  /* 16px root — aligns Tailwind's rem-based `text-*` scale with docs/DESIGN.md
      (text-base=16px body, text-sm=14px caption, text-xs=12px small). */
   font-size: 16px;
 }

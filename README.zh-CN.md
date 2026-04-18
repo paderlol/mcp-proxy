@@ -113,10 +113,11 @@ mcp-proxy/
 │   ├── mcp-proxy-cli/          # AI 客户端调用的 CLI
 │   └── mcp-proxy-agent/        # Docker 容器内启动器
 ├── tests/e2e/                  # Playwright UI 测试
-├── docs/                       # 额外文档
-├── DESIGN.md                   # UI 设计规范
-├── TEST_RULES.md               # 测试策略
-└── SECURITY_TODO.md            # 安全缺口与后续事项
+└── docs/
+    ├── DESIGN.md               # UI 设计规范
+    ├── TEST_RULES.md           # 测试策略
+    ├── SECURITY_TODO.md        # 安全缺口与后续事项
+    └── e2e-manual.md           # 手工 AI 客户端验证步骤
 ```
 
 ## 支持的运行模式
@@ -260,9 +261,9 @@ npm run test:e2e
 
 ## 相关文档
 
-- [DESIGN.md](DESIGN.md): 视觉语言和 UI 约定
-- [TEST_RULES.md](TEST_RULES.md): 测试策略和详细说明
-- [SECURITY_TODO.md](SECURITY_TODO.md): 已知安全缺口和后续加固方向
+- [docs/DESIGN.md](docs/DESIGN.md): 视觉语言和 UI 约定
+- [docs/TEST_RULES.md](docs/TEST_RULES.md): 测试策略和详细说明
+- [docs/SECURITY_TODO.md](docs/SECURITY_TODO.md): 已知安全缺口和后续加固方向
 - [docs/e2e-manual.md](docs/e2e-manual.md): 手动端到端验证说明
 
 ## 当前状态
