@@ -36,6 +36,8 @@ export interface MockVault {
   backend: "keychain" | "encrypted-file";
   exists: boolean;
   unlocked: boolean;
+  prefer_local_vault: boolean;
+  can_switch_backend: boolean;
 }
 
 export interface MockState {
@@ -58,7 +60,13 @@ export function defaultMockState(overrides: Partial<MockState> = {}): MockState 
     servers: [],
     secrets: [],
     auditLogs: [],
-    vault: { backend: "keychain", exists: true, unlocked: true },
+    vault: {
+      backend: "keychain",
+      exists: true,
+      unlocked: true,
+      prefer_local_vault: false,
+      can_switch_backend: true,
+    },
     autostart: false,
     autostartSupported: true,
     ...overrides,
@@ -184,9 +192,37 @@ export async function installTauriMock(
         case "change_vault_password":
           return null;
         case "reset_vault":
-          s.vault = { backend: "encrypted-file", exists: false, unlocked: false };
+          s.vault = {
+            backend: "encrypted-file",
+            exists: false,
+            unlocked: false,
+            prefer_local_vault: s.vault.prefer_local_vault,
+            can_switch_backend: s.vault.can_switch_backend,
+          };
           s.secrets = s.secrets.filter((x) => x.source.type !== "Local");
           return null;
+        case "set_prefer_local_vault": {
+          const enabled = args.enabled as boolean;
+          if (!s.vault.can_switch_backend) {
+            throw new Error("backend switch not supported on this platform");
+          }
+          if (!enabled && s.vault.backend === "encrypted-file" && !s.vault.unlocked) {
+            throw new Error(
+              "Unlock the vault before switching back to Keychain so you can still read any encrypted secrets you've already stored.",
+            );
+          }
+          s.vault.prefer_local_vault = enabled;
+          if (enabled) {
+            s.vault.backend = "encrypted-file";
+            s.vault.exists = false;
+            s.vault.unlocked = false;
+          } else {
+            s.vault.backend = "keychain";
+            s.vault.exists = true;
+            s.vault.unlocked = true;
+          }
+          return null;
+        }
 
         // ---------- Config generation ----------
         case "generate_config":

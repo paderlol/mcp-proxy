@@ -78,7 +78,7 @@ AI Client
 ### Storage and security boundaries
 
 - Secret values are not written into generated AI client config files.
-- Local secret storage uses macOS Keychain on macOS, or an AES-256-GCM encrypted vault on platforms without Keychain support.
+- Local secret storage uses macOS Keychain on macOS by default, or an AES-256-GCM encrypted vault on platforms without Keychain support. macOS users can opt into the encrypted vault instead of Keychain via **Settings → Security → Switch to Local Vault**; the choice is persisted so the CLI and GUI agree. Switching backends does not migrate existing secrets.
 - 1Password secrets are resolved on demand with `op read` and are not cached in project config.
 - Secret values are zeroized where implemented via the `zeroize` crate.
 - Docker sandbox mode sends secrets over stdin instead of Docker env vars, Dockerfiles, or image layers.

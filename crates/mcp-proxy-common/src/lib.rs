@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod local_backend;
 pub mod models;
+pub mod preferences;
 pub mod secret_resolver;
 pub mod session;
 pub mod store;

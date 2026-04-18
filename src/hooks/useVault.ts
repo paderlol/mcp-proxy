@@ -18,6 +18,12 @@ interface VaultStore {
   changePassword: (newPassword: string) => Promise<void>;
   /** Delete the vault file entirely. All Local secrets are lost. */
   reset: () => Promise<void>;
+  /**
+   * macOS-only: opt in to / out of the encrypted vault instead of Keychain.
+   * The caller is responsible for warning the user that secrets do not
+   * migrate between backends.
+   */
+  setPreferLocalVault: (enabled: boolean) => Promise<void>;
 }
 
 export const useVault = create<VaultStore>((set, get) => ({
@@ -75,6 +81,19 @@ export const useVault = create<VaultStore>((set, get) => ({
     set({ busy: true, error: null });
     try {
       await api.resetVault();
+      await get().refresh();
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  setPreferLocalVault: async (enabled) => {
+    set({ busy: true, error: null });
+    try {
+      await api.setPreferLocalVault(enabled);
       await get().refresh();
     } catch (e) {
       set({ error: String(e) });
