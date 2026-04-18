@@ -393,14 +393,14 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2">
               <PillButton
-                variant={transportType === "stdio" ? "dark" : "outlined"}
+                variant={transportType === "stdio" ? "brand" : "outlined"}
                 onClick={() => setTransportType("stdio")}
                 className="flex-1"
               >
                 Stdio
               </PillButton>
               <PillButton
-                variant={transportType === "sse" ? "dark" : "outlined"}
+                variant={transportType === "sse" ? "brand" : "outlined"}
                 onClick={() => setTransportType("sse")}
                 className="flex-1"
               >
@@ -415,7 +415,7 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2 mb-2">
               <PillButton
-                variant={!trusted ? "dark" : "outlined"}
+                variant={!trusted ? "warning" : "outlined"}
                 onClick={() => setTrusted(false)}
                 className="flex-1"
               >
@@ -432,47 +432,45 @@ export function ServerConfig() {
               </PillButton>
             </div>
             {trusted ? (
-              <p className="text-xs text-text-secondary/70 px-1">
-                <ShieldCheck
-                  size={12}
-                  className="inline mr-1 -mt-0.5 text-brand"
-                />
-                You have reviewed this server. The CLI will launch it
-                normally — in Local mode with direct env vars, or in Docker
-                sandbox with the default bridge network.
-              </p>
+              <ul className="text-xs text-text-secondary/70 px-1 space-y-1 list-none">
+                <li>
+                  <ShieldCheck
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-brand"
+                  />
+                  <strong>Launch:</strong> runs normally in Local and
+                  Docker sandbox.
+                </li>
+                <li className="pl-[18px] -indent-[18px]">
+                  <ShieldCheck
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-brand"
+                  />
+                  <strong>Network:</strong> sandbox uses Docker's default
+                  bridge.
+                </li>
+              </ul>
             ) : (
-              <div className="text-xs text-text-secondary/70 px-1 flex flex-col gap-1">
-                <p>
+              <ul className="text-xs text-text-secondary/70 px-1 space-y-1 list-none">
+                <li>
                   <ShieldAlert
                     size={12}
                     className="inline mr-1 -mt-0.5 text-warning"
                   />
-                  Untrusted is the default for new servers and is
-                  load-bearing, not a warning label. The CLI uses this flag
-                  as a launch gate:
-                </p>
-                <ul className="list-disc pl-5 space-y-0.5">
-                  <li>
-                    <strong>Local mode:</strong>{" "}
-                    <code className="text-text-bright">mcp-proxy run</code>{" "}
-                    refuses to launch. AI clients see an error until you
-                    flip to Trusted.
-                  </li>
-                  <li>
-                    <strong>Docker sandbox mode:</strong> the CLI injects{" "}
-                    <code className="text-text-bright">--network=none</code>{" "}
-                    and still refuses to launch unless you also set an
-                    explicit{" "}
-                    <code className="text-text-bright">--network</code> flag
-                    in <code className="text-text-bright">extra_args</code>.
-                  </li>
-                </ul>
-                <p>
-                  Review the package and command, then flip to Trusted for
-                  normal operation.
-                </p>
-              </div>
+                  <strong>Launch:</strong> Local is blocked. Sandbox runs
+                  only if <code className="text-text-bright">extra_args</code>{" "}
+                  sets an explicit{" "}
+                  <code className="text-text-bright">--network</code>.
+                </li>
+                <li className="pl-[18px] -indent-[18px]">
+                  <ShieldAlert
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-warning"
+                  />
+                  <strong>Network:</strong> sandbox defaults to{" "}
+                  <code className="text-text-bright">--network=none</code>.
+                </li>
+              </ul>
             )}
           </div>
 
@@ -482,7 +480,7 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2 mb-2">
               <PillButton
-                variant={runMode === "Local" ? "dark" : "outlined"}
+                variant={runMode === "Local" ? "brand" : "outlined"}
                 onClick={() => setRunMode("Local")}
                 className="flex-1"
               >
@@ -490,7 +488,7 @@ export function ServerConfig() {
                 Local
               </PillButton>
               <PillButton
-                variant={runMode === "DockerSandbox" ? "dark" : "outlined"}
+                variant={runMode === "DockerSandbox" ? "brand" : "outlined"}
                 onClick={() => setRunMode("DockerSandbox")}
                 className="flex-1"
               >
