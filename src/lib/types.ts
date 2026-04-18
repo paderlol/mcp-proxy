@@ -52,10 +52,20 @@ export interface WriteConfigResult {
 }
 
 export interface VaultStatus {
-  /** "keychain" on macOS, "encrypted-file" otherwise */
+  /**
+   * "keychain" on macOS by default, "encrypted-file" everywhere else and on
+   * macOS when the user has opted into the local vault.
+   */
   backend: "keychain" | "encrypted-file";
   exists: boolean;
   unlocked: boolean;
+  /**
+   * macOS opt-in flag mirroring the persisted preference. On non-macOS this
+   * is always `false`.
+   */
+  prefer_local_vault: boolean;
+  /** `true` only on macOS — the only platform with a meaningful choice. */
+  can_switch_backend: boolean;
 }
 
 export type AuditLogStatus =

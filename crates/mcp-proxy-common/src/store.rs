@@ -58,3 +58,17 @@ pub fn secrets_meta_path() -> PathBuf {
 pub fn audit_log_path() -> PathBuf {
     app_data_dir().join("audit.log")
 }
+
+/// Shared test-only mutex for tests that mutate `MCP_PROXY_DATA_DIR` (or
+/// anything else that resolves relative to it).
+///
+/// Without this, multiple tests racing on the env var can see a data dir
+/// set by another test and produce surprising "already populated" state or
+/// permission errors. Acquire this lock at the top of any `#[test]` that
+/// calls `std::env::set_var(DATA_DIR_ENV, ...)`.
+#[cfg(test)]
+pub fn test_env_lock() -> &'static std::sync::Mutex<()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}

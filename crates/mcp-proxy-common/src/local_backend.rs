@@ -1,15 +1,20 @@
 //! Platform-specific local secret storage.
 //!
 //! Users see "Local" as a single option; this module routes to:
-//! - **macOS**: OS Keychain (hardware-backed on Apple Silicon)
+//! - **macOS**: OS Keychain by default (hardware-backed on Apple Silicon),
+//!   or the AES-256-GCM encrypted vault when the user opts in via
+//!   [`crate::preferences::Preferences::prefer_local_vault`].
 //! - **Linux / Windows**: AES-256-GCM encrypted file via [`crate::vault::Vault`]
 //!   — master password is held in memory as a derived key while the process
 //!   runs; the vault must be unlocked with [`unlock_vault`] before any
 //!   read/write.
 //!
 //! Callers never need to know which backend is active. The choice is made by
-//! [`default_backend`] at compile time via `cfg(target_os)`.
+//! [`default_backend`] — on non-macOS targets this is resolved at compile
+//! time via `cfg(target_os)`; on macOS it is resolved at runtime by reading
+//! the persisted user preference.
 
+use crate::preferences;
 use crate::session;
 use crate::vault::Vault;
 use crate::KEYCHAIN_SERVICE;
@@ -26,10 +31,19 @@ pub enum LocalBackend {
 }
 
 /// Returns the backend selected for the current platform.
-pub const fn default_backend() -> LocalBackend {
+///
+/// On macOS this honors the persisted [`preferences::Preferences::prefer_local_vault`]
+/// flag: when true, the user has explicitly opted into the AES-256-GCM vault
+/// instead of the default Keychain. On Linux / Windows the vault is the only
+/// option and the preference is ignored.
+pub fn default_backend() -> LocalBackend {
     #[cfg(target_os = "macos")]
     {
-        LocalBackend::Keychain
+        if preferences::load().prefer_local_vault {
+            LocalBackend::EncryptedFile
+        } else {
+            LocalBackend::Keychain
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -38,7 +52,7 @@ pub const fn default_backend() -> LocalBackend {
 }
 
 /// Human-readable label for the current platform's backend, shown in UI.
-pub const fn backend_label() -> &'static str {
+pub fn backend_label() -> &'static str {
     match default_backend() {
         LocalBackend::Keychain => "macOS Keychain",
         LocalBackend::EncryptedFile => "AES-256 encrypted file",
@@ -46,10 +60,58 @@ pub const fn backend_label() -> &'static str {
 }
 
 /// Short backend identifier for machine-readable status reporting.
-pub const fn backend_id() -> &'static str {
+pub fn backend_id() -> &'static str {
     match default_backend() {
         LocalBackend::Keychain => "keychain",
         LocalBackend::EncryptedFile => "encrypted-file",
+    }
+}
+
+/// Switch the macOS Local backend between Keychain and the encrypted vault.
+///
+/// The switch state machine, as enforced by the GUI Settings page:
+///
+/// - **Keychain → EncryptedFile**: free. After flipping the preference the
+///   next `default_backend()` call returns `EncryptedFile`. If no vault file
+///   exists yet the user will be prompted to set a master password on the
+///   Settings page; existing Keychain secrets are **not** migrated.
+/// - **EncryptedFile → Keychain**: requires the vault to currently be
+///   unlocked. We lock it as a side effect so the caller starts clean on
+///   the Keychain side; again, no migration of existing vault secrets.
+///
+/// On non-macOS platforms this returns an error — there is no meaningful
+/// alternative backend to switch to.
+pub fn set_prefer_local_vault(enabled: bool) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = enabled;
+        return Err(
+            "The Local backend is already the encrypted vault on this platform; \
+             there is no alternative to switch to."
+                .to_string(),
+        );
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let current = preferences::load().prefer_local_vault;
+        if current == enabled {
+            return Ok(());
+        }
+        if !enabled {
+            // Vault → Keychain. Require the vault to be unlocked so we know
+            // the user currently has access to it; we're about to hide it
+            // behind the Keychain backend selector and don't want the user
+            // orphaning encrypted data they can't read.
+            if vault_exists() && !is_unlocked() {
+                return Err("Unlock the vault before switching back to Keychain so you \
+                     can still read any encrypted secrets you've already stored."
+                    .to_string());
+            }
+            // Lock as we flip so the switch starts from a clean slate.
+            lock_vault();
+        }
+        preferences::update(|p| p.prefer_local_vault = enabled);
+        Ok(())
     }
 }
 
@@ -313,66 +375,17 @@ fn delete_keychain(id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(not(target_os = "macos"))]
-    use crate::store::DATA_DIR_ENV;
+    use crate::store::{test_env_lock, DATA_DIR_ENV};
     #[cfg(not(target_os = "macos"))]
     use std::fs;
-    #[cfg(not(target_os = "macos"))]
-    use std::sync::Mutex;
 
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn macos_uses_keychain_backend() {
-        assert_eq!(default_backend(), LocalBackend::Keychain);
-        assert_eq!(backend_id(), "keychain");
-        assert_eq!(backend_label(), "macOS Keychain");
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn is_unlocked_always_true_on_macos() {
-        // On macOS there is no vault state — Keychain unlocking is handled
-        // by the OS, so the concept is always "unlocked" from our view.
-        assert!(is_unlocked());
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn unlock_and_lock_are_noops_on_macos() {
-        // These must not error on macOS even though we don't have a vault
-        // file — callers can always invoke them unconditionally.
-        unlock_vault("ignored").unwrap();
-        lock_vault();
-        assert!(is_unlocked());
-    }
-
-    #[test]
-    #[cfg(not(target_os = "macos"))]
-    fn non_macos_uses_encrypted_file_backend() {
-        assert_eq!(default_backend(), LocalBackend::EncryptedFile);
-        assert_eq!(backend_id(), "encrypted-file");
-    }
-
-    #[test]
-    #[cfg(not(target_os = "macos"))]
-    fn locked_read_fails_with_clear_error() {
-        // Ensure sessions start locked in this test's process state.
-        lock_vault();
-        assert!(!is_unlocked());
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let err = rt.block_on(get_local("whatever")).unwrap_err();
-        assert!(err.to_lowercase().contains("vault is locked"), "got: {err}");
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    #[cfg(not(target_os = "macos"))]
+    /// Run `f` with a fresh temporary data dir and (on macOS) a clean
+    /// `prefer_local_vault = false` preference. Restores the previous env
+    /// afterwards.
     fn with_temp_profile<F: FnOnce()>(f: F) {
-        let _lock = ENV_LOCK.lock().unwrap();
+        // Acquire even if poisoned — a sibling test panicking shouldn't
+        // cascade into "poisoned lock" failures here.
+        let _lock = test_env_lock().lock().unwrap_or_else(|e| e.into_inner());
         let data_dir = tempfile::tempdir().unwrap();
         let runtime_dir = tempfile::tempdir().unwrap();
         let prev_data = std::env::var(DATA_DIR_ENV).ok();
@@ -397,6 +410,103 @@ mod tests {
                 None => std::env::remove_var("XDG_RUNTIME_DIR"),
             }
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_uses_keychain_backend_by_default() {
+        with_temp_profile(|| {
+            assert_eq!(default_backend(), LocalBackend::Keychain);
+            assert_eq!(backend_id(), "keychain");
+            assert_eq!(backend_label(), "macOS Keychain");
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_opts_into_encrypted_file_when_preference_set() {
+        with_temp_profile(|| {
+            set_prefer_local_vault(true).unwrap();
+            assert_eq!(default_backend(), LocalBackend::EncryptedFile);
+            assert_eq!(backend_id(), "encrypted-file");
+            assert_eq!(backend_label(), "AES-256 encrypted file");
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_switch_back_to_keychain_requires_unlocked_when_vault_exists() {
+        with_temp_profile(|| {
+            // Opt in and create a vault.
+            set_prefer_local_vault(true).unwrap();
+            unlock_vault("pw").unwrap();
+            assert!(is_unlocked());
+
+            // Lock it and try to switch back — should be refused.
+            lock_vault();
+            let err = set_prefer_local_vault(false).unwrap_err();
+            assert!(
+                err.to_lowercase().contains("unlock the vault"),
+                "got: {err}"
+            );
+
+            // Unlock, then the switch should succeed and lock the vault.
+            unlock_vault("pw").unwrap();
+            set_prefer_local_vault(false).unwrap();
+            assert_eq!(default_backend(), LocalBackend::Keychain);
+            assert!(is_unlocked(), "Keychain backend is always unlocked");
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn macos_switch_back_to_keychain_ok_when_no_vault_exists_yet() {
+        // Edge case: user opted in, then changes their mind before creating
+        // the vault — nothing to orphan, so the switch should go through.
+        with_temp_profile(|| {
+            set_prefer_local_vault(true).unwrap();
+            assert!(!vault_exists());
+            set_prefer_local_vault(false).unwrap();
+            assert_eq!(default_backend(), LocalBackend::Keychain);
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn is_unlocked_true_when_keychain_selected_on_macos() {
+        with_temp_profile(|| {
+            assert!(is_unlocked());
+        });
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn set_prefer_local_vault_is_error_on_non_macos() {
+        with_temp_profile(|| {
+            let err = set_prefer_local_vault(true).unwrap_err();
+            assert!(err.to_lowercase().contains("already"), "got: {err}");
+        });
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn non_macos_uses_encrypted_file_backend() {
+        assert_eq!(default_backend(), LocalBackend::EncryptedFile);
+        assert_eq!(backend_id(), "encrypted-file");
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn locked_read_fails_with_clear_error() {
+        // Ensure sessions start locked in this test's process state.
+        lock_vault();
+        assert!(!is_unlocked());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let err = rt.block_on(get_local("whatever")).unwrap_err();
+        assert!(err.to_lowercase().contains("vault is locked"), "got: {err}");
     }
 
     #[test]

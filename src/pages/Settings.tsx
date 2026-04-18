@@ -14,6 +14,7 @@ import {
   Clock,
   RefreshCw,
   FileClock,
+  Shuffle,
 } from "lucide-react";
 import { useVault } from "../hooks/useVault";
 import {
@@ -25,8 +26,17 @@ import { listAuditLogs } from "../lib/tauri";
 import type { AuditLogEntry } from "../lib/types";
 
 export function Settings() {
-  const { status, busy, error, refresh, unlock, lock, changePassword, reset } =
-    useVault();
+  const {
+    status,
+    busy,
+    error,
+    refresh,
+    unlock,
+    lock,
+    changePassword,
+    reset,
+    setPreferLocalVault,
+  } = useVault();
   const [idleTimeoutMs, setIdleTimeoutMs] = useVaultIdleTimeout();
   const autostart = useAutostart();
 
@@ -44,6 +54,12 @@ export function Settings() {
   // reset confirmation
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
+
+  // backend switch confirmation (macOS-only)
+  const [showBackendSwitch, setShowBackendSwitch] = useState(false);
+  const [backendSwitchError, setBackendSwitchError] = useState<string | null>(
+    null,
+  );
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditBusy, setAuditBusy] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -58,10 +74,18 @@ export function Settings() {
 
   const isKeychain = status?.backend === "keychain";
   const showVaultCard = status && !isKeychain;
+  const canSwitchBackend = status?.can_switch_backend ?? false;
 
   const localDescription = isKeychain
     ? "Hardware-backed encryption via the system Keychain — unlocks with your login."
     : "AES-256-GCM encrypted file, unlocked with a master password held only in memory.";
+
+  // Switching Vault → Keychain while the vault is locked would orphan any
+  // encrypted secrets, so we disable that flip until the user unlocks.
+  const switchToKeychainBlockedByLock =
+    !isKeychain && status?.exists === true && status?.unlocked !== true;
+  const nextBackendLabel = isKeychain ? "Local Vault" : "macOS Keychain";
+  const switchButtonLabel = `Switch to ${nextBackendLabel}`;
 
   const handleSubmitPassword = async () => {
     if (!password) return;
@@ -101,6 +125,18 @@ export function Settings() {
       setChangePwError(String(e));
     } finally {
       setChangePwBusy(false);
+    }
+  };
+
+  const confirmBackendSwitch = async () => {
+    setBackendSwitchError(null);
+    try {
+      // If currently on Keychain → flip to vault (prefer_local_vault = true).
+      // If currently on Vault → flip back (prefer_local_vault = false).
+      await setPreferLocalVault(isKeychain);
+      setShowBackendSwitch(false);
+    } catch (e) {
+      setBackendSwitchError(String(e));
     }
   };
 
@@ -206,6 +242,40 @@ export function Settings() {
               </Badge>
             </div>
           </div>
+
+          {canSwitchBackend && (
+            <div className="border-t border-border-default/30 pt-3 mt-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-text-primary flex items-center gap-2">
+                  <Shuffle size={14} className="text-info" />
+                  Change Local backend
+                </p>
+                <p className="text-xs text-text-secondary">
+                  {isKeychain
+                    ? "Opt into the AES-256 encrypted vault instead of the system Keychain. Switching does not migrate existing secrets."
+                    : "Go back to using the macOS Keychain. Unlock the vault first so nothing encrypted is orphaned. Switching does not migrate existing secrets."}
+                </p>
+                {switchToKeychainBlockedByLock && (
+                  <p className="text-xs text-warning mt-1 flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    Unlock the vault before switching back to Keychain.
+                  </p>
+                )}
+              </div>
+              <PillButton
+                variant="brand"
+                onClick={() => {
+                  setBackendSwitchError(null);
+                  setShowBackendSwitch(true);
+                }}
+                disabled={busy || switchToKeychainBlockedByLock}
+                aria-label={switchButtonLabel}
+              >
+                <Shuffle size={12} className="mr-1" />
+                {switchButtonLabel}
+              </PillButton>
+            </div>
+          )}
         </Card>
 
         <Card>
@@ -555,6 +625,72 @@ export function Settings() {
             >
               <Trash2 size={12} className="mr-1" />
               Reset Vault
+            </PillButton>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Backend switch confirmation modal */}
+      <Modal
+        open={showBackendSwitch}
+        onClose={() => {
+          setShowBackendSwitch(false);
+          setBackendSwitchError(null);
+        }}
+        title={`Switch Local backend to ${nextBackendLabel}?`}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="rounded-lg border border-warning/30 bg-bg-elevated p-3 flex items-start gap-2">
+            <AlertTriangle
+              size={14}
+              className="text-warning flex-shrink-0 mt-0.5"
+            />
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Switching backends does <strong>not</strong> migrate existing
+              secrets. Anything you already stored as{" "}
+              <strong>{isKeychain ? "Keychain" : "Vault"}</strong> entries will
+              stay where they are and won't be readable from the new backend
+              until you re-enter them.
+              {isKeychain ? (
+                <>
+                  {" "}
+                  If this is your first time enabling the vault, you'll be
+                  prompted for a master password on the next screen.
+                </>
+              ) : (
+                <>
+                  {" "}
+                  Your existing vault file remains on disk. You can switch
+                  back later without data loss.
+                </>
+              )}
+            </p>
+          </div>
+          {backendSwitchError && (
+            <p className="text-xs text-negative flex items-center gap-1">
+              <AlertTriangle size={12} />
+              {backendSwitchError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <PillButton
+              variant="outlined"
+              onClick={() => {
+                setShowBackendSwitch(false);
+                setBackendSwitchError(null);
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="brand"
+              onClick={confirmBackendSwitch}
+              disabled={busy}
+              aria-label={`Confirm switch to ${nextBackendLabel}`}
+            >
+              <Shuffle size={12} className="mr-1" />
+              Switch to {nextBackendLabel}
             </PillButton>
           </div>
         </div>

@@ -62,11 +62,12 @@ pub fn read_recent_audit_logs(limit: usize) -> Result<Vec<AuditLogEntry>, String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::DATA_DIR_ENV;
+    use crate::store::{test_env_lock, DATA_DIR_ENV};
     use tempfile::TempDir;
 
     #[test]
     fn append_and_read_recent_logs_round_trip() {
+        let _lock = test_env_lock().lock().unwrap_or_else(|e| e.into_inner());
         let tmp = TempDir::new().unwrap();
         unsafe { std::env::set_var(DATA_DIR_ENV, tmp.path()) };
 

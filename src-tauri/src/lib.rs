@@ -44,6 +44,7 @@ pub fn run() {
             commands::vault::lock_vault,
             commands::vault::change_vault_password,
             commands::vault::reset_vault,
+            commands::vault::set_prefer_local_vault,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

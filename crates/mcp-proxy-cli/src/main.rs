@@ -71,17 +71,18 @@ fn main() {
 }
 
 fn run_server(server_id: &str) -> Result<(), String> {
-    // 0. On non-macOS platforms the "Local" secret backend is an encrypted
-    //    vault that needs unlocking before any read. AI clients launching us
-    //    can't prompt for a password, so we try two sources in order:
+    // 0. When the "Local" secret backend is the encrypted vault (always on
+    //    non-macOS; opt-in on macOS via Settings → Local Storage) we must
+    //    unlock it before any secret read. AI clients launching us can't
+    //    prompt for a password, so we try two sources in order:
     //
     //      1. A session file written by the GUI at unlock time (preferred —
     //         no /proc env-var leak, lifetime bound to GUI session).
     //      2. `MCP_PROXY_MASTER_PASSWORD` env var (fallback for headless
     //         setups or users who haven't launched the GUI this session).
     //
-    //    On macOS this block is compiled out — Keychain just works.
-    #[cfg(not(target_os = "macos"))]
+    //    When the backend is Keychain (macOS default) `is_unlocked()` returns
+    //    true and this whole block short-circuits.
     {
         use mcp_proxy_common::local_backend;
         if local_backend::vault_exists() && !local_backend::is_unlocked() {

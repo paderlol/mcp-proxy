@@ -68,8 +68,15 @@ Known security gaps to address in future iterations.
   - ~~No "change master password" or "reset vault" flows~~ — shipped.
     Settings card has both, guarded by a typed-confirmation modal for
     reset.
-  - macOS users keep using Keychain; there is no UI to opt into the vault
-    on macOS yet.
+  - ~~macOS users keep using Keychain; there is no UI to opt into the vault
+    on macOS yet.~~ — shipped. Settings → Security card now exposes a
+    "Switch to Local Vault" / "Switch to macOS Keychain" pill on macOS,
+    persisted via `preferences::prefer_local_vault` in
+    `$data_dir/preferences.json` so the CLI reads the same choice. The
+    switch does **not** migrate existing secrets between backends; a
+    confirmation modal surfaces that limitation before the flip, and
+    Vault → Keychain is blocked while the vault is locked to avoid
+    orphaning encrypted data.
 - **Files**: `crates/mcp-proxy-common/src/{vault,local_backend}.rs`, `src-tauri/src/commands/vault.rs`, `src/pages/Settings.tsx`
 
 ## Low Priority

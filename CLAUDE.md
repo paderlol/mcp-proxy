@@ -153,6 +153,12 @@ Three backends:
 ### macOS Keychain (macOS default — preferred when available)
 - Stored via `keyring` crate with service name `com.mcp-proxy`
 - Hardware-backed encryption on Apple Silicon
+- macOS users can opt into the AES-256 encrypted vault instead via
+  **Settings → Security → Switch to Local Vault**. The choice is persisted
+  to `$data_dir/preferences.json` (`prefer_local_vault: bool`) so the CLI
+  uses the same backend as the GUI. Switching does **not** migrate secrets
+  between backends — each side starts empty and the user re-creates entries
+  manually. See [crates/mcp-proxy-common/src/preferences.rs](crates/mcp-proxy-common/src/preferences.rs).
 
 ### 1Password (via `op` CLI)
 - Reads secrets via `op read "op://vault/item/field"` at proxy start time

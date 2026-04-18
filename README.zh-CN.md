@@ -78,7 +78,7 @@ AI 客户端
 ### 存储与安全边界
 
 - 生成的 AI 客户端配置文件中不会包含密钥值。
-- 本地密钥存储在 macOS 上优先使用 Keychain；无 Keychain 的平台使用 AES-256-GCM 加密 Vault。
+- 本地密钥存储在 macOS 上默认使用 Keychain；无 Keychain 的平台使用 AES-256-GCM 加密 Vault。macOS 用户也可以在 **Settings → Security → Switch to Local Vault** 中主动切换到加密 Vault，该选择会被持久化，CLI 与 GUI 始终读取同一后端。切换后端不会自动迁移已有密钥。
 - 1Password 密钥在运行时通过 `op read` 读取，不缓存到项目配置里。
 - 部分敏感值使用 `zeroize` 做内存清理。
 - Docker 沙箱模式通过 stdin 传递密钥，不通过 Docker 环境变量、Dockerfile 或镜像层暴露。
