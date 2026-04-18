@@ -13,6 +13,11 @@ pub struct McpServerConfig {
     pub run_mode: RunMode,
     pub enabled: bool,
     pub trusted: bool,
+    /// macOS-only: wrap Local-mode child processes with `sandbox-exec` +
+    /// generated `.sb` profile. No-op on Linux/Windows (CLI ignores). Opt-in
+    /// only — defaults to `false` for backward compatibility.
+    #[serde(default)]
+    pub sandbox_local: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,6 +37,7 @@ impl McpServerConfig {
             run_mode: RunMode::Local,
             enabled: true,
             trusted: false,
+            sandbox_local: false,
             created_at: now,
             updated_at: now,
             first_launched_at: None,
@@ -214,6 +220,38 @@ mod tests {
         // Re-serializing must not emit the field (skip_serializing_if).
         let json = serde_json::to_string(&parsed).unwrap();
         assert!(!json.contains("first_launched_at"));
+    }
+
+    /// `sandbox_local` is the macOS-only opt-in hardening flag. Legacy configs
+    /// written before the field existed must still deserialize, and the default
+    /// must be `false`.
+    #[test]
+    fn mcp_server_config_defaults_sandbox_local_false() {
+        let legacy = r#"{
+            "id": "srv-1",
+            "name": "legacy",
+            "command": "npx",
+            "args": [],
+            "transport": {"type": "Stdio"},
+            "env_mappings": [],
+            "run_mode": {"type": "Local"},
+            "enabled": true,
+            "trusted": false,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let parsed: McpServerConfig = serde_json::from_str(legacy).unwrap();
+        assert!(!parsed.sandbox_local);
+    }
+
+    #[test]
+    fn mcp_server_config_round_trips_with_sandbox_local() {
+        let mut config =
+            McpServerConfig::new("t".to_string(), "npx".to_string(), vec![], Transport::Stdio);
+        config.sandbox_local = true;
+        let json = serde_json::to_string(&config).unwrap();
+        let back: McpServerConfig = serde_json::from_str(&json).unwrap();
+        assert!(back.sandbox_local);
     }
 
     #[test]
