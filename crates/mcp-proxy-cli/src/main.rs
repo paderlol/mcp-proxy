@@ -15,7 +15,9 @@ mod sandbox;
 use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
 use mcp_proxy_common::invocation_log::{Direction, InvocationLogger, LoggerHandle};
-use mcp_proxy_common::models::{config_keys, hex_id, EnvValue, McpServerConfig, RunMode, SecretMeta};
+use mcp_proxy_common::models::{
+    config_keys, hex_id, EnvValue, McpServerConfig, RunMode, SecretMeta,
+};
 use mcp_proxy_common::secret_resolver::resolve_secret;
 use mcp_proxy_common::store::{
     app_data_dir, load_json, save_json, secrets_meta_path, servers_path,
@@ -166,7 +168,10 @@ fn run_server(server_id: &str) -> Result<(), String> {
                 // Distinguish "ambiguous prefix" from "not found" for a
                 // better error — the previous branch silently returned None
                 // on ambiguity.
-                let prefix_count = servers.iter().filter(|s| s.id.starts_with(&server_id)).count();
+                let prefix_count = servers
+                    .iter()
+                    .filter(|s| s.id.starts_with(&server_id))
+                    .count();
                 if prefix_count > 1 {
                     return Err(format!(
                         "Server id '{server_id}' is ambiguous — multiple servers share this prefix. \
