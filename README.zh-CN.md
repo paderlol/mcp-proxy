@@ -53,6 +53,15 @@ AI 客户端
   -> stdio 透明透传
 ```
 
+在 macOS 上，可在 Servers 页面 Local 模式下打开 `sandbox_local` 开关，CLI 会用
+`sandbox-exec(1)` 包裹子进程并应用本地生成的 `.sb` 配置：读权限整体开放，但对
+常见密钥目录（`~/.ssh`、`~/.aws`、`~/Library/Keychains`、`~/.gnupg`、
+`~/.config/gh`、`/etc/master.passwd`、`/etc/sudoers`）做拒绝名单；写权限仅限
+`$TMPDIR` 与 `~/Library/Caches/mcp-proxy/<server-id>/`；网络默认放行。该标记在
+Linux / Windows 上被忽略（尚未实现对应包装器）；若系统缺少
+`/usr/bin/sandbox-exec`，CLI 会打印警告并退回到直接启动。需要关闭时把开关关掉或
+直接编辑 Server 的 JSON 配置即可。
+
 #### Docker 沙箱模式
 
 ```text

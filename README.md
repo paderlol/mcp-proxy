@@ -53,6 +53,16 @@ AI Client
   -> pass stdio through unchanged
 ```
 
+On macOS, setting `sandbox_local = true` on a server (toggle in the "Servers"
+page under Local mode) wraps the child in `sandbox-exec(1)` with a
+locally-generated `.sb` profile: reads are broad with a denylist for secret
+stores (`~/.ssh`, `~/.aws`, `~/Library/Keychains`, `~/.gnupg`,
+`~/.config/gh`, `/etc/master.passwd`, `/etc/sudoers`), writes are scoped to
+`$TMPDIR` plus `~/Library/Caches/mcp-proxy/<server-id>/`, and network access
+stays on. The flag is ignored on Linux and Windows (no wrapper exists yet);
+if `/usr/bin/sandbox-exec` is missing the CLI logs a warning and spawns
+directly. Turn it off by flipping the toggle back or editing the server JSON.
+
 #### Docker sandbox mode
 
 ```text

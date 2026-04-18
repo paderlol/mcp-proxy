@@ -10,6 +10,7 @@
 //! so MCP protocol traffic flows transparently.
 
 mod docker;
+mod sandbox;
 
 use clap::{Parser, Subcommand};
 use mcp_proxy_common::audit::{append_audit_log, AuditLogEntry, AuditStatus};
@@ -280,11 +281,31 @@ fn record_first_launch(server_id: &str) -> Result<(), String> {
 }
 
 fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> Result<(), String> {
+    // Build the child command. On macOS, if the server opts into local
+    // sandboxing, wrap the real command in `sandbox-exec -f <profile>`. The
+    // `TempProfile` guard lives until after `child.wait()` returns so the
+    // profile file is only removed once the child exits.
+    #[cfg(target_os = "macos")]
+    let (mut cmd, _profile_guard) = build_local_command_macos(config)?;
+
+    #[cfg(not(target_os = "macos"))]
+    let mut cmd = {
+        if config.sandbox_local {
+            tracing::warn!(
+                "sandbox_local=true but this platform has no sandbox-exec; \
+                 spawning unsandboxed"
+            );
+        }
+        Command::new(&config.command)
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    cmd.args(&config.args);
+
     // Inherit stdio: AI client's stdin/stdout IS our stdin/stdout,
     // and the child inherits them directly. MCP protocol traffic flows through
     // without any manual piping on our side.
-    let mut child = Command::new(&config.command)
-        .args(&config.args)
+    let mut child = cmd
         .envs(&env_vars)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -302,6 +323,62 @@ fn spawn_local(config: &McpServerConfig, env_vars: HashMap<String, String>) -> R
     }
 
     Ok(())
+}
+
+/// macOS-only: build the `Command` used for Local run mode, wrapping the real
+/// command in `sandbox-exec -f <profile>` when `sandbox_local` is set.
+///
+/// Returns the command *and* a `TempProfile` guard the caller must keep alive
+/// for the duration of the child process — dropping it removes the `.sb` file.
+/// The guard is `Option::None` when the server opted out or when sandboxing
+/// couldn't be set up (we fall back to direct spawn rather than blocking).
+#[cfg(target_os = "macos")]
+fn build_local_command_macos(
+    config: &McpServerConfig,
+) -> Result<(Command, Option<sandbox::TempProfile>), String> {
+    if !config.sandbox_local {
+        let mut cmd = Command::new(&config.command);
+        cmd.args(&config.args);
+        return Ok((cmd, None));
+    }
+
+    // If sandbox-exec isn't on PATH for some reason, warn and fall back rather
+    // than refuse to launch. Users who want a hard-fail should use Docker.
+    if which_sandbox_exec().is_none() {
+        tracing::warn!("sandbox-exec not found on PATH; falling back to direct spawn");
+        let mut cmd = Command::new(&config.command);
+        cmd.args(&config.args);
+        return Ok((cmd, None));
+    }
+
+    let cache_dir = sandbox::cache_dir_for(&config.id);
+    let profile =
+        sandbox::write_temp_profile(&config.id, &cache_dir, sandbox::SandboxNetwork::Allowed)
+            .map_err(|e| format!("Failed to write sandbox profile: {e}"))?;
+
+    tracing::info!(
+        "wrapping '{}' in sandbox-exec (profile: {})",
+        config.command,
+        profile.path().display()
+    );
+
+    let mut cmd = Command::new("sandbox-exec");
+    cmd.arg("-f").arg(profile.path());
+    cmd.arg(&config.command);
+    cmd.args(&config.args);
+    Ok((cmd, Some(profile)))
+}
+
+#[cfg(target_os = "macos")]
+fn which_sandbox_exec() -> Option<std::path::PathBuf> {
+    // Fixed location on every supported macOS release; avoid a full PATH
+    // scan.
+    let p = std::path::PathBuf::from("/usr/bin/sandbox-exec");
+    if p.exists() {
+        Some(p)
+    } else {
+        None
+    }
 }
 
 fn list_servers() -> Result<(), String> {

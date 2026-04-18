@@ -22,6 +22,7 @@ export interface MockServer {
     | { type: "DockerSandbox"; image: string | null; extra_args: string[] };
   enabled: boolean;
   trusted: boolean;
+  sandbox_local?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -141,6 +142,7 @@ export async function installTauriMock(
                 : { type: "Local" },
             enabled: true,
             trusted: (args.trusted as boolean | undefined) ?? false,
+            sandbox_local: (args.sandboxLocal as boolean | undefined) ?? false,
             created_at: nowIso(),
             updated_at: nowIso(),
           };

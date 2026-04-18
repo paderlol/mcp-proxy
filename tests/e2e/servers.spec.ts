@@ -142,4 +142,69 @@ test.describe("Servers", () => {
     await expect(page.getByText("GitHub", { exact: true })).toBeVisible();
     await expect(page.getByText("Filesystem", { exact: true })).toBeHidden();
   });
+
+  test("sandbox-exec toggle appears on macOS and persists the flag", async ({
+    page,
+  }) => {
+    // Force `navigator.platform` to a macOS value before any app script runs.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "platform", {
+        configurable: true,
+        get: () => "MacIntel",
+      });
+    });
+    await installTauriMock(page, defaultMockState());
+    await page.goto("/servers");
+
+    await page.getByRole("button", { name: /add server/i }).click();
+    await page.getByPlaceholder("e.g., GitHub MCP").fill("Sandboxed");
+    await page.getByPlaceholder("e.g., npx").fill("npx");
+
+    // The macOS-only sandbox toggle block should be visible.
+    const toggle = page.getByTestId("sandbox-local-toggle");
+    await expect(toggle).toBeVisible();
+
+    // Flip it on, then save as trusted (skips the untrusted warning modal).
+    await toggle.getByRole("button", { name: /sandbox-exec/i }).click();
+    await page.getByRole("button", { name: /^trusted$/i }).click();
+    await page.getByRole("button", { name: /save server/i }).click();
+
+    // After save, open the card again and confirm the toggle is still on.
+    await page
+      .getByRole("button", { name: "Edit Sandboxed" })
+      .first()
+      .click();
+    const persistedToggle = page
+      .getByTestId("sandbox-local-toggle")
+      .getByRole("button", { name: /sandbox-exec/i });
+    // "brand" variant renders with the green background utility class; we can
+    // assert either on the class signature or on the opposing "Off" button
+    // NOT carrying the warning variant. Class assertion is more robust to
+    // copy tweaks.
+    await expect(persistedToggle).toHaveClass(/brand/);
+  });
+
+  test("sandbox-exec toggle is hidden on non-macOS hosts", async ({ page }) => {
+    // Pretend we're on Linux — navigator.platform + userAgent both point away
+    // from macOS.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "platform", {
+        configurable: true,
+        get: () => "Linux x86_64",
+      });
+      Object.defineProperty(navigator, "userAgent", {
+        configurable: true,
+        get: () =>
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      });
+    });
+    await installTauriMock(page, defaultMockState());
+    await page.goto("/servers");
+
+    await page.getByRole("button", { name: /add server/i }).click();
+    await page.getByPlaceholder("e.g., GitHub MCP").fill("Plain");
+    await page.getByPlaceholder("e.g., npx").fill("npx");
+
+    await expect(page.getByTestId("sandbox-local-toggle")).toBeHidden();
+  });
 });
