@@ -15,11 +15,12 @@ Known security gaps to address in future iterations.
   - No typed `network_policy` field in `McpServerConfig`. Parsing from `extra_args` was chosen to avoid a storage migration; revisit if the UI grows a dedicated picker.
 - **Risk (residual)**: A trusted server still runs with Docker's default bridge — reviewing trust remains a human responsibility.
 
-### 2. Untrusted Server Warning
-- **Risk**: Users may add malicious MCP servers without realizing the risk
-- **Fix**: Show confirmation dialog before first launch of any server with `trusted: false`
-- **UI**: "This server is not verified. It will have access to: [list of secrets]. Continue?"
-- **Files**: `src/pages/ServerConfig.tsx`, `src-tauri/src/commands/proxy.rs`
+### 2. Untrusted Server Warning ✅ shipped
+- **Status**: Trust is a first-class, load-bearing flag on every server:
+  - **CLI launch gate** ([crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs) `run_server`): untrusted Local-mode servers are refused outright; untrusted Docker-sandbox servers only launch if the operator sets an explicit `--network` flag in `extra_args`.
+  - **Network policy tiered by trust** (see §1): untrusted sandboxed servers default to `--network=none`; trusted servers keep Docker's default bridge.
+  - **UI warnings** ([src/pages/ServerConfig.tsx](src/pages/ServerConfig.tsx)): Trust Level pills with explicit "Launch + Network" copy per state; Network Policy hint card; Local-mode "no isolation" `ShieldAlert` warning.
+- **Residual risk**: Flipping a server to Trusted is a one-click action — reviewing trust remains a human responsibility.
 
 ### 3. Dockerfile Command Injection (lower priority now)
 - **Risk (original)**: Malicious command/args in server config could exploit generated Dockerfile
@@ -28,11 +29,16 @@ Known security gaps to address in future iterations.
 
 ## Medium Priority
 
-### 4. Audit Log
-- **Risk**: No visibility into which server accessed which secrets and when
-- **Fix**: Log all `resolve_secret()` calls with timestamp, server_id, secret_id to a local log file
-- **UI**: Add log viewer to Settings page
-- **Files**: `src-tauri/src/commands/proxy.rs`, `src/pages/Settings.tsx`
+### 4. Audit Log ✅ shipped
+- **Status**: Shipped in [crates/mcp-proxy-common/src/audit.rs](crates/mcp-proxy-common/src/audit.rs).
+  Every CLI launch (and secret resolution) appends a timestamped record
+  keyed by `server_id` + resolved env var names (no secret values) to a
+  local JSONL log. The Tauri GUI surfaces the log through
+  [src-tauri/src/commands/logs.rs](src-tauri/src/commands/logs.rs) and a
+  Settings-page viewer.
+- **Residual risk**: Log file is plain JSONL, readable by same-UID
+  attackers — acceptable since it contains no secret material, only
+  which server accessed which env var names and when.
 
 ### 5. Binary Integrity (Code Signing)
 - **Risk**: `mcp-proxy` or `mcp-proxy-agent` binary replaced by attacker
@@ -69,13 +75,37 @@ Known security gaps to address in future iterations.
 ## Low Priority
 
 ### 7. Docker stdin Logging
-- **Risk**: Custom Docker logging drivers may capture stdin, exposing the secret JSON payload
-- **Fix**: Document this in user-facing README. Consider adding a `--log-driver=none` flag to docker run.
+- See §10 — tracked there as the concrete `--log-driver=none` task.
 
 ### 8. `/proc/PID/environ` Readable in Container
 - **Risk**: Any process in the container can read MCP server's env vars via procfs
 - **Fix**: Inherent limitation of env var injection. Mitigated by container isolation (single-process container). Document as known limitation.
 
-### 9. Local Mode No Isolation
-- **Risk**: Local mode MCP server has full user filesystem/network access
-- **Fix**: Document risk clearly in UI. Consider optional macOS `sandbox-exec` integration in future.
+### 9. Local Mode No Isolation ⚠️ partial (UI warning shipped, sandbox pending)
+- **Status**: Run-mode selector in
+  [src/pages/ServerConfig.tsx](src/pages/ServerConfig.tsx) now renders a
+  `ShieldAlert` "Direct process — fast but no isolation." hint whenever
+  Local mode is selected; Docker mode gets the opposing `ShieldCheck`
+  "filesystem and network isolated." copy. Combined with the trust gate
+  (§2), untrusted Local-mode servers are refused at launch regardless.
+- **Remaining**: No macOS `sandbox-exec` wrapper yet — trusted Local
+  servers still run with the user's full FS/network access. Future work.
+
+### 10. Docker `--log-driver=none` by Default
+- **Risk**: Operators who configure non-default Docker log drivers
+  (e.g. `journald`, `fluentd`) could capture container stdin, which
+  includes the one-line secret JSON payload written by the CLI.
+- **Fix**: Inject `--log-driver=none` into the base `docker run` args in
+  [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs)
+  `docker_run_with_stdin_payload`, with a user-facing note in README.
+- **Status**: Not yet shipped.
+
+### 11. Base Image Auto-Inference & Prebuilt-Image MCP Servers
+- **Risk**: Not strictly a security gap — but both touch the Dockerfile
+  that embeds `mcp-proxy-agent`, so listed here for tracking.
+  - Today: user must manually specify a base image (e.g. `node:20-alpine`)
+    and the CLI always multi-stage-builds agent + MCP server on top.
+  - Desired: auto-pick `node:*` for `npx`, `python:*` for `uvx`, etc.;
+    and support treating the server *itself* as a prebuilt Docker image
+    (run the image directly with agent injected via volume or side-car).
+- **Status**: Not yet designed.
