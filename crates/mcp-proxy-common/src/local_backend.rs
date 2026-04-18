@@ -103,11 +103,9 @@ pub fn set_prefer_local_vault(enabled: bool) -> Result<(), String> {
             // behind the Keychain backend selector and don't want the user
             // orphaning encrypted data they can't read.
             if vault_exists() && !is_unlocked() {
-                return Err(
-                    "Unlock the vault before switching back to Keychain so you \
+                return Err("Unlock the vault before switching back to Keychain so you \
                      can still read any encrypted secrets you've already stored."
-                        .to_string(),
-                );
+                    .to_string());
             }
             // Lock as we flip so the switch starts from a clean slate.
             lock_vault();
@@ -486,10 +484,7 @@ mod tests {
     fn set_prefer_local_vault_is_error_on_non_macos() {
         with_temp_profile(|| {
             let err = set_prefer_local_vault(true).unwrap_err();
-            assert!(
-                err.to_lowercase().contains("already"),
-                "got: {err}"
-            );
+            assert!(err.to_lowercase().contains("already"), "got: {err}");
         });
     }
 

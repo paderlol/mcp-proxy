@@ -108,11 +108,7 @@ mod tests {
         with_temp_data_dir(|| {
             // Simulate a file written by a newer version with a field we
             // don't know about, and missing `prefer_local_vault`.
-            std::fs::write(
-                preferences_path(),
-                r#"{"future_setting": "wibble"}"#,
-            )
-            .unwrap();
+            std::fs::write(preferences_path(), r#"{"future_setting": "wibble"}"#).unwrap();
             let loaded = load();
             assert_eq!(loaded, Preferences::default());
         });
