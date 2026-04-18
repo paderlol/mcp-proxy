@@ -295,8 +295,11 @@ export function Settings() {
               onClick={() => void refreshAuditLogs()}
               disabled={auditBusy}
             >
-              <RefreshCw size={12} className="mr-1" />
-              {auditBusy ? "Refreshing..." : "Refresh"}
+              <RefreshCw
+                size={12}
+                className={`mr-1 ${auditBusy ? "animate-spin" : ""}`}
+              />
+              Refresh
             </PillButton>
           </div>
 
