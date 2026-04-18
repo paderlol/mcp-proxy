@@ -222,12 +222,16 @@ Three backends:
 - Secret scoping: each server only receives its own mapped env vars
 
 ### MCP Server Trust
-- Each server has a `trusted` flag (default: false)
-- Untrusted servers show a warning before first launch
-- Audit log records which server accessed which secrets and when
+- Each server has a `trusted` flag (default: false) — load-bearing; it threads through the whole app (CLI launch gate, Docker network policy, UI badges, docs).
+- Untrusted servers show a warning before first launch.
+- **CLI launch gate** (`crates/mcp-proxy-cli/src/main.rs::run_server`): untrusted servers in Local mode are refused. In Docker sandbox mode, untrusted servers launch only if `extra_args` already contains an explicit `--network=...` flag (an informed choice by the operator).
+- Audit log records which server accessed which secrets and when.
 
 ### Docker Sandbox (for untrusted servers)
-- Full filesystem isolation — container cannot read host files
-- Network can be restricted via Docker `--network` flags
-- Secrets delivered via stdin pipe — never visible in env vars, process list, or docker inspect
-- No HTTP server, no tokens, no network-based secret delivery
+- Full filesystem isolation — container cannot read host files.
+- **Trust-tiered network defaults** (see `crates/mcp-proxy-cli/src/docker.rs::resolve_network_flag`):
+  - `trusted = true` → no `--network` injection; Docker's default bridge network is used (same reachability as Local mode).
+  - `trusted = false` + no explicit `--network` in `extra_args` → CLI injects `--network=none`; paired with the launch gate above, untrusted sandboxed servers only run once the operator explicitly opts in to a network policy.
+  - Any `--network` / `--net` flag in `extra_args` always wins.
+- Secrets delivered via stdin pipe — never visible in env vars, process list, or docker inspect.
+- No HTTP server, no tokens, no network-based secret delivery.

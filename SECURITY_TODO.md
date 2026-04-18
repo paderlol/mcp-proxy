@@ -4,11 +4,16 @@ Known security gaps to address in future iterations.
 
 ## High Priority
 
-### 1. Docker Sandbox: Default `--network=none` + whitelist UI
-- **Status**: Docker sandbox itself is now implemented (CLI path). `extra_args` is passed through to `docker run` verbatim — users can set `--network=none` manually, but the default is bridge (permissive).
-- **Risk**: Malicious MCP server in Docker sandbox can exfiltrate secrets via network by default.
-- **Fix**: When `extra_args` doesn't already specify a network mode, default to `--network=none`. Add a Networking row in the UI with radios: None / Bridge / Custom + domain whitelist.
-- **Files**: `crates/mcp-proxy-cli/src/docker.rs` (add default), `src/pages/ServerConfig.tsx` (add UI), `models.rs` (maybe add `network_policy` field)
+### 1. Docker Sandbox: Default `--network=none` + whitelist UI ✅ shipped (trust-tiered MVP)
+- **Status**: Trust-tiered defaults now applied in [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) (`resolve_network_flag`).
+  - `trusted = true` → no injection (Docker's default bridge network).
+  - `trusted = false` + no explicit `--network` in `extra_args` → CLI injects `--network=none`, AND the launch gate refuses to run the server at all until the operator either flips the server to Trusted or sets an explicit network flag in `extra_args`.
+  - Any user-supplied `--network` / `--net` flag always wins.
+- **UI**: [src/pages/ServerConfig.tsx](src/pages/ServerConfig.tsx) shows a "Network Policy" hint card in the Docker Sandbox section describing the effective policy based on current trust state + `extra_args`.
+- **Known follow-ups**:
+  - No first-class UI form for `extra_args` yet — operators editing it today do so through the JSON store or future custom-policy UI (radios: None / Bridge / Custom + domain whitelist).
+  - No typed `network_policy` field in `McpServerConfig`. Parsing from `extra_args` was chosen to avoid a storage migration; revisit if the UI grows a dedicated picker.
+- **Risk (residual)**: A trusted server still runs with Docker's default bridge — reviewing trust remains a human responsibility.
 
 ### 2. Untrusted Server Warning
 - **Risk**: Users may add malicious MCP servers without realizing the risk

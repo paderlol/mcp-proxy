@@ -18,6 +18,7 @@ import {
   KeyRound,
   X,
   Pencil,
+  Network,
 } from "lucide-react";
 import { useServers } from "../hooks/useServers";
 import { useSecrets } from "../hooks/useSecrets";
@@ -392,14 +393,14 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2">
               <PillButton
-                variant={transportType === "stdio" ? "dark" : "outlined"}
+                variant={transportType === "stdio" ? "brand" : "outlined"}
                 onClick={() => setTransportType("stdio")}
                 className="flex-1"
               >
                 Stdio
               </PillButton>
               <PillButton
-                variant={transportType === "sse" ? "dark" : "outlined"}
+                variant={transportType === "sse" ? "brand" : "outlined"}
                 onClick={() => setTransportType("sse")}
                 className="flex-1"
               >
@@ -414,7 +415,7 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2 mb-2">
               <PillButton
-                variant={!trusted ? "dark" : "outlined"}
+                variant={!trusted ? "warning" : "outlined"}
                 onClick={() => setTrusted(false)}
                 className="flex-1"
               >
@@ -430,11 +431,47 @@ export function ServerConfig() {
                 Trusted
               </PillButton>
             </div>
-            <p className="text-xs text-text-secondary/60 px-1">
-              {trusted
-                ? "Marked as reviewed. This suppresses the untrusted-server warning."
-                : "Untrusted servers should be reviewed before you expose them to any AI client."}
-            </p>
+            {trusted ? (
+              <ul className="text-xs text-text-secondary/70 px-1 space-y-1 list-none">
+                <li>
+                  <ShieldCheck
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-brand"
+                  />
+                  <strong>Launch:</strong> runs normally in Local and
+                  Docker sandbox.
+                </li>
+                <li className="pl-[18px] -indent-[18px]">
+                  <ShieldCheck
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-brand"
+                  />
+                  <strong>Network:</strong> sandbox uses Docker's default
+                  bridge.
+                </li>
+              </ul>
+            ) : (
+              <ul className="text-xs text-text-secondary/70 px-1 space-y-1 list-none">
+                <li>
+                  <ShieldAlert
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-warning"
+                  />
+                  <strong>Launch:</strong> Local is blocked. Sandbox runs
+                  only if <code className="text-text-bright">extra_args</code>{" "}
+                  sets an explicit{" "}
+                  <code className="text-text-bright">--network</code>.
+                </li>
+                <li className="pl-[18px] -indent-[18px]">
+                  <ShieldAlert
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-warning"
+                  />
+                  <strong>Network:</strong> sandbox defaults to{" "}
+                  <code className="text-text-bright">--network=none</code>.
+                </li>
+              </ul>
+            )}
           </div>
 
           <div className="border-t border-border-default/30 pt-4">
@@ -443,7 +480,7 @@ export function ServerConfig() {
             </label>
             <div className="flex gap-2 mb-2">
               <PillButton
-                variant={runMode === "Local" ? "dark" : "outlined"}
+                variant={runMode === "Local" ? "brand" : "outlined"}
                 onClick={() => setRunMode("Local")}
                 className="flex-1"
               >
@@ -451,7 +488,7 @@ export function ServerConfig() {
                 Local
               </PillButton>
               <PillButton
-                variant={runMode === "DockerSandbox" ? "dark" : "outlined"}
+                variant={runMode === "DockerSandbox" ? "brand" : "outlined"}
                 onClick={() => setRunMode("DockerSandbox")}
                 className="flex-1"
               >
@@ -488,8 +525,8 @@ export function ServerConfig() {
                   className={inputClass}
                 />
                 {!dockerImage.trim() ? (
-                  <p className="text-xs text-warning flex items-center gap-1 px-1">
-                    <ShieldAlert size={12} className="inline" />
+                  <p className="text-xs text-warning px-1">
+                    <ShieldAlert size={12} className="inline mr-1 -mt-0.5" />
                     A base image is required for sandbox mode. Pick one with
                     the runtime your command needs (e.g.,{" "}
                     <code className="text-text-bright">node:20-alpine</code>{" "}
@@ -501,6 +538,15 @@ export function ServerConfig() {
                     min). Subsequent runs are cached.
                   </p>
                 )}
+
+                <NetworkPolicyHint
+                  trusted={trusted}
+                  extraArgs={
+                    editingServer?.run_mode.type === "DockerSandbox"
+                      ? editingServer.run_mode.extra_args
+                      : []
+                  }
+                />
               </div>
             )}
           </div>
@@ -686,5 +732,74 @@ export function ServerConfig() {
         </div>
       </Modal>
     </MainContent>
+  );
+}
+
+/// Mirrors the CLI logic in `crates/mcp-proxy-cli/src/docker.rs::resolve_network_flag`.
+/// Keep these two in sync — the CLI is the source of truth at runtime, this is
+/// just a disclosure to the user about what will happen.
+function extraArgsSpecifyNetwork(extraArgs: readonly string[]): boolean {
+  return extraArgs.some(
+    (a) =>
+      a === "--network" ||
+      a === "--net" ||
+      a.startsWith("--network=") ||
+      a.startsWith("--net="),
+  );
+}
+
+function NetworkPolicyHint({
+  trusted,
+  extraArgs,
+}: {
+  trusted: boolean;
+  extraArgs: readonly string[];
+}) {
+  const explicit = extraArgsSpecifyNetwork(extraArgs);
+  const effective: "explicit" | "bridge" | "none" = explicit
+    ? "explicit"
+    : trusted
+      ? "bridge"
+      : "none";
+
+  const tone =
+    effective === "none"
+      ? "border-warning/30 bg-warning/5"
+      : effective === "bridge"
+        ? "border-brand/30 bg-brand/5"
+        : "border-border-default/30 bg-bg-elevated";
+
+  return (
+    <div className={`mt-2 rounded-lg border ${tone} p-2.5`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Network size={12} className="text-text-secondary" />
+        <p className="text-xs font-bold text-text-primary">Network Policy</p>
+      </div>
+      {effective === "explicit" && (
+        <p className="text-xs text-text-secondary">
+          Uses the <code className="text-text-bright">--network</code> flag you
+          set in <code className="text-text-bright">extra_args</code>. Your
+          explicit choice always wins.
+        </p>
+      )}
+      {effective === "bridge" && (
+        <p className="text-xs text-text-secondary">
+          Trusted + no explicit <code className="text-text-bright">--network</code>{" "}
+          flag → container uses Docker's default <strong>bridge</strong> network.
+          The server can reach external APIs.
+        </p>
+      )}
+      {effective === "none" && (
+        <p className="text-xs text-text-secondary">
+          Untrusted + no explicit <code className="text-text-bright">--network</code>{" "}
+          flag → the CLI will inject{" "}
+          <code className="text-text-bright">--network=none</code> and the
+          container will have <strong>no network access</strong>. Most MCP
+          servers need network; mark this server <strong>Trusted</strong> after
+          reviewing it, or edit{" "}
+          <code className="text-text-bright">extra_args</code> to pick a policy.
+        </p>
+      )}
+    </div>
   );
 }

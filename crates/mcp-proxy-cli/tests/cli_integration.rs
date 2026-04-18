@@ -297,6 +297,64 @@ fn run_untrusted_server_fails_with_gate_message() {
 }
 
 #[test]
+fn run_untrusted_sandbox_without_network_policy_fails_with_gate_message() {
+    // Sandbox mode without an explicit --network flag must still be blocked
+    // by the trust gate. The message must point users at BOTH escape hatches.
+    let env = TestEnv::new();
+    env.write_servers(json!([server_fixture_with_trust(
+        "boxed-risky",
+        "npx",
+        vec!["-y", "@example/x"],
+        true,
+        json!({
+            "type": "DockerSandbox",
+            "image": "node:20-alpine",
+            "extra_args": [],
+        }),
+        vec![],
+        false,
+    )]));
+
+    env.cmd()
+        .args(["run", "boxed-risky"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("not trusted"))
+        .stderr(predicate::str::contains("--network"));
+}
+
+#[test]
+fn run_untrusted_sandbox_with_explicit_network_bypasses_trust_gate() {
+    // When the operator explicitly sets a network policy in extra_args,
+    // the trust gate yields to their informed choice. Assert the failure
+    // reason is NOT the trust gate — we stub out PATH so `docker` lookup
+    // fails immediately instead of triggering a real (slow) image build.
+    let env = TestEnv::new();
+    env.write_servers(json!([server_fixture_with_trust(
+        "boxed-explicit",
+        "npx",
+        vec!["-y", "@example/x"],
+        true,
+        json!({
+            "type": "DockerSandbox",
+            "image": "node:20-alpine",
+            "extra_args": ["--network=none"],
+        }),
+        vec![],
+        false,
+    )]));
+
+    let mut cmd = env.cmd();
+    cmd.env("PATH", "/nonexistent-for-mcp-proxy-tests");
+    cmd.args(["run", "boxed-explicit"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not trusted").not())
+        .stderr(predicate::str::contains("Docker"));
+}
+
+#[test]
 fn run_untrusted_server_does_not_stamp_first_launched_at() {
     // Untrusted launch must not touch the config — the write-back path is
     // gated on the trust check upstream of secret resolution.

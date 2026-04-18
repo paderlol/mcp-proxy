@@ -1,6 +1,12 @@
 import { type ButtonHTMLAttributes, type ReactNode } from "react";
 
-type Variant = "dark" | "light" | "outlined" | "brand" | "circular";
+type Variant =
+  | "dark"
+  | "light"
+  | "outlined"
+  | "brand"
+  | "warning"
+  | "circular";
 
 interface PillButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -20,6 +26,7 @@ const variantStyles: Record<Variant, string> = {
   light: `${baseSize} bg-bg-light text-bg-surface`,
   outlined: `${baseSize} bg-transparent text-text-primary !border-border-light hover:!border-text-primary`,
   brand: `${baseSize} bg-brand text-bg-base hover:brightness-110`,
+  warning: `${baseSize} bg-warning text-bg-base hover:brightness-110`,
   circular:
     "bg-bg-elevated text-text-primary p-3 rounded-full hover:bg-bg-card border border-transparent",
 };
