@@ -278,4 +278,4 @@ npm run test:e2e
 
 ## License
 
-TBD.
+基于 [MIT License](LICENSE) 开源。

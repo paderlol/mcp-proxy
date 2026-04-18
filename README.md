@@ -279,4 +279,4 @@ The core desktop app, CLI runtime path, config generation, and automated test su
 
 ## License
 
-TBD.
+Licensed under the [MIT License](LICENSE).
