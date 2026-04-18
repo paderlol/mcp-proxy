@@ -233,7 +233,7 @@ export function SecretsManager() {
             </label>
             <div className="flex gap-2">
               <PillButton
-                variant={sourceType === "Local" ? "dark" : "outlined"}
+                variant={sourceType === "Local" ? "brand" : "outlined"}
                 onClick={() => !editingSecret && setSourceType("Local")}
                 disabled={!!editingSecret}
                 className="flex-1"
@@ -242,7 +242,7 @@ export function SecretsManager() {
                 Local
               </PillButton>
               <PillButton
-                variant={sourceType === "OnePassword" ? "dark" : "outlined"}
+                variant={sourceType === "OnePassword" ? "brand" : "outlined"}
                 onClick={() => !editingSecret && setSourceType("OnePassword")}
                 disabled={!!editingSecret}
                 className="flex-1"
