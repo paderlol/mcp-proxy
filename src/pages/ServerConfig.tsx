@@ -431,11 +431,49 @@ export function ServerConfig() {
                 Trusted
               </PillButton>
             </div>
-            <p className="text-xs text-text-secondary/60 px-1">
-              {trusted
-                ? "Marked as reviewed. This suppresses the untrusted-server warning."
-                : "Untrusted servers should be reviewed before you expose them to any AI client."}
-            </p>
+            {trusted ? (
+              <p className="text-xs text-text-secondary/70 px-1">
+                <ShieldCheck
+                  size={12}
+                  className="inline mr-1 -mt-0.5 text-brand"
+                />
+                You have reviewed this server. The CLI will launch it
+                normally — in Local mode with direct env vars, or in Docker
+                sandbox with the default bridge network.
+              </p>
+            ) : (
+              <div className="text-xs text-text-secondary/70 px-1 flex flex-col gap-1">
+                <p>
+                  <ShieldAlert
+                    size={12}
+                    className="inline mr-1 -mt-0.5 text-warning"
+                  />
+                  Untrusted is the default for new servers and is
+                  load-bearing, not a warning label. The CLI uses this flag
+                  as a launch gate:
+                </p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li>
+                    <strong>Local mode:</strong>{" "}
+                    <code className="text-text-bright">mcp-proxy run</code>{" "}
+                    refuses to launch. AI clients see an error until you
+                    flip to Trusted.
+                  </li>
+                  <li>
+                    <strong>Docker sandbox mode:</strong> the CLI injects{" "}
+                    <code className="text-text-bright">--network=none</code>{" "}
+                    and still refuses to launch unless you also set an
+                    explicit{" "}
+                    <code className="text-text-bright">--network</code> flag
+                    in <code className="text-text-bright">extra_args</code>.
+                  </li>
+                </ul>
+                <p>
+                  Review the package and command, then flip to Trusted for
+                  normal operation.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-border-default/30 pt-4">
