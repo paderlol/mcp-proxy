@@ -8,6 +8,11 @@ export interface McpServerConfig {
   run_mode: RunMode;
   enabled: boolean;
   trusted: boolean;
+  /**
+   * macOS-only: wrap Local-mode child processes with `sandbox-exec` and a
+   * generated `.sb` profile. Ignored by the CLI on non-macOS hosts.
+   */
+  sandbox_local?: boolean;
   created_at: string;
   updated_at: string;
   first_launched_at?: string;

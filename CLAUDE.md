@@ -170,7 +170,15 @@ Three backends:
 ### Local (default)
 - Spawns MCP server as a local child process with secrets injected as env vars
 - Fast, zero overhead — transparent stdio pipe
-- No isolation: process has full filesystem/network access
+- No isolation by default: process has full filesystem/network access
+- **macOS opt-in sandbox**: setting `sandbox_local = true` on a server config
+  wraps the child in `sandbox-exec(1)` with a generated `.sb` profile
+  (`crates/mcp-proxy-cli/src/sandbox.rs`). Reads are broad with a denylist for
+  secret stores (`~/.ssh`, `~/.aws`, `~/Library/Keychains`, `~/.gnupg`,
+  `~/.config/gh`, `/etc/master.passwd`, `/etc/sudoers`); writes are scoped to
+  `$TMPDIR` and `~/Library/Caches/mcp-proxy/<server-id>/`; network allowed.
+  Missing `sandbox-exec` falls back to direct spawn with a logged warning.
+  Flag is ignored on Linux/Windows — no wrapper exists there yet.
 
 ### Docker Sandbox (optional, MVP implemented)
 - Runs MCP server in a Docker container for filesystem + network isolation

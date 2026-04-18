@@ -352,8 +352,9 @@ fn build_local_command_macos(
     }
 
     let cache_dir = sandbox::cache_dir_for(&config.id);
-    let profile = sandbox::write_temp_profile(&config.id, &cache_dir, sandbox::SandboxNetwork::Allowed)
-        .map_err(|e| format!("Failed to write sandbox profile: {e}"))?;
+    let profile =
+        sandbox::write_temp_profile(&config.id, &cache_dir, sandbox::SandboxNetwork::Allowed)
+            .map_err(|e| format!("Failed to write sandbox profile: {e}"))?;
 
     tracing::info!(
         "wrapping '{}' in sandbox-exec (profile: {})",

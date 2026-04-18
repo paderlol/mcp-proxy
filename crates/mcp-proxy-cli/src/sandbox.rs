@@ -85,6 +85,21 @@ impl Default for SandboxNetwork {
 pub fn generate_profile(server_id: &str, cache_dir: &Path, network: SandboxNetwork) -> String {
     let cache_path = escape_scheme_string(&cache_dir.display().to_string());
     let sid = escape_scheme_string(server_id);
+
+    // Resolve $HOME once at profile-gen time. `sandbox-exec(1)` in practice
+    // does NOT support `(string-param "HOME" "/.ssh")` unless the caller also
+    // passes `-D HOME=...`, which we don't — the form errors at load with
+    // `unbound variable: string-param`. Substituting the literal path is
+    // simpler and lets us escape it like every other dynamic segment.
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    let home_str = home.display().to_string();
+    let ssh = escape_scheme_string(&format!("{home_str}/.ssh"));
+    let aws = escape_scheme_string(&format!("{home_str}/.aws"));
+    let gh = escape_scheme_string(&format!("{home_str}/.config/gh"));
+    let gnupg = escape_scheme_string(&format!("{home_str}/.gnupg"));
+    let keychains = escape_scheme_string(&format!("{home_str}/Library/Keychains"));
     // We don't actually use sid in the body right now (cache_dir already
     // encodes it), but include it as a leading comment so an auditor reading
     // the file can tell which server it belongs to.
@@ -113,11 +128,11 @@ pub fn generate_profile(server_id: &str, cache_dir: &Path, network: SandboxNetwo
 ;; so we invert: allow broad reads and explicitly deny secret stores.
 (allow file-read*)
 (deny file-read*
-    (subpath (string-param "HOME" "/.ssh"))
-    (subpath (string-param "HOME" "/.aws"))
-    (subpath (string-param "HOME" "/.config/gh"))
-    (subpath (string-param "HOME" "/.gnupg"))
-    (subpath (string-param "HOME" "/Library/Keychains"))
+    (subpath {ssh})
+    (subpath {aws})
+    (subpath {gh})
+    (subpath {gnupg})
+    (subpath {keychains})
     (literal "/private/etc/master.passwd")
     (literal "/etc/master.passwd")
     (literal "/private/etc/sudoers"))
@@ -215,7 +230,9 @@ pub fn write_temp_profile(
 /// Returns the `~/Library/Caches/mcp-proxy/<server-id>/` path the sandbox is
 /// allowed to write to, creating it if needed.
 pub fn cache_dir_for(server_id: &str) -> PathBuf {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
     let dir = home
         .join("Library")
         .join("Caches")
@@ -272,10 +289,21 @@ mod tests {
     fn escape_prevents_rule_injection() {
         let hostile = r#"evil") (allow default) ("#;
         let escaped = escape_scheme_string(hostile);
-        // The original `")` must be escaped out, so the closing-quote never
-        // appears bare inside the embedded literal.
-        assert!(!escaped.contains("\") ("));
+        // The escaped output must start and end with a single `"` and every
+        // interior `"` must be preceded by a backslash (i.e. be `\"`). That is
+        // exactly the property TinyScheme relies on to never leave its string
+        // literal state mid-read, which is what would let injection happen.
         assert!(escaped.starts_with('"') && escaped.ends_with('"'));
+        let inner = &escaped[1..escaped.len() - 1];
+        let bytes = inner.as_bytes();
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == b'"' {
+                assert!(
+                    i > 0 && bytes[i - 1] == b'\\',
+                    "bare \" at {i} in {escaped:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -292,8 +320,7 @@ mod tests {
 
     #[test]
     fn generate_profile_blocks_network_when_requested() {
-        let profile =
-            generate_profile("srv", Path::new("/tmp/x"), SandboxNetwork::Blocked);
+        let profile = generate_profile("srv", Path::new("/tmp/x"), SandboxNetwork::Blocked);
         assert!(!profile.contains("(allow network*)"));
         assert!(profile.contains("network denied by default"));
     }
@@ -305,8 +332,57 @@ mod tests {
             Path::new("/tmp/x"),
             SandboxNetwork::Allowed,
         );
-        // The hostile string must appear only inside a quoted literal.
-        assert!(!profile.contains("(allow default)"));
+        // The hostile string is emitted into the header comment line, so the
+        // literal text `(allow default)` does appear — but only as part of a
+        // `;;` comment, which TinyScheme skips to end-of-line. Assert the only
+        // line containing `(allow default)` starts with a comment marker.
+        for line in profile.lines() {
+            if line.contains("(allow default)") {
+                assert!(
+                    line.trim_start().starts_with(";;"),
+                    "`(allow default)` appeared on a non-comment line: {line:?}"
+                );
+            }
+        }
+    }
+
+    /// Same input, but targeting the `cache_path` interpolation — a hostile
+    /// path must land inside the quoted `(subpath ...)` argument and never
+    /// break into a fresh top-level rule.
+    #[test]
+    fn generate_profile_hostile_cache_path_is_quoted() {
+        let hostile = std::path::PathBuf::from(r#"/tmp/"evil") (allow default) ("#);
+        let profile = generate_profile("srv", &hostile, SandboxNetwork::Allowed);
+        // The `(subpath …)` line that embeds the cache path must still be one
+        // balanced `(subpath "…")` form; if escaping failed it would split
+        // across multiple parens.
+        let cache_line = profile
+            .lines()
+            .find(|l| l.contains("(subpath ") && l.contains("evil"))
+            .expect("cache_path subpath line present");
+        // The hostile `(allow default)` substring must land *inside* a
+        // `"..."` literal (where TinyScheme treats it as string content),
+        // never as a structural form. Walk the line and assert that every
+        // byte of the substring falls within `in_str`.
+        let needle = "(allow default)";
+        let pos = cache_line.find(needle).expect("needle present");
+        let prefix = &cache_line[..pos];
+        let (mut in_str, mut prev_backslash) = (false, false);
+        for ch in prefix.chars() {
+            match ch {
+                '\\' if in_str => {
+                    prev_backslash = !prev_backslash;
+                    continue;
+                }
+                '"' if !prev_backslash => in_str = !in_str,
+                _ => {}
+            }
+            prev_backslash = false;
+        }
+        assert!(
+            in_str,
+            "hostile `(allow default)` escaped its string literal: {cache_line:?}"
+        );
     }
 
     #[test]
@@ -316,9 +392,8 @@ mod tests {
 
     #[test]
     fn write_temp_profile_then_drop_removes_file() {
-        let tmp =
-            write_temp_profile("test-server", Path::new("/tmp"), SandboxNetwork::Allowed)
-                .expect("write profile");
+        let tmp = write_temp_profile("test-server", Path::new("/tmp"), SandboxNetwork::Allowed)
+            .expect("write profile");
         let path = tmp.path().to_path_buf();
         assert!(path.exists(), "profile should exist on disk");
         let body = std::fs::read_to_string(&path).unwrap();

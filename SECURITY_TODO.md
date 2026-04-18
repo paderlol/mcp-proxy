@@ -88,15 +88,29 @@ Known security gaps to address in future iterations.
 - **Risk**: Any process in the container can read MCP server's env vars via procfs
 - **Fix**: Inherent limitation of env var injection. Mitigated by container isolation (single-process container). Document as known limitation.
 
-### 9. Local Mode No Isolation ⚠️ partial (UI warning shipped, sandbox pending)
-- **Status**: Run-mode selector in
-  [src/pages/ServerConfig.tsx](src/pages/ServerConfig.tsx) now renders a
-  `ShieldAlert` "Direct process — fast but no isolation." hint whenever
-  Local mode is selected; Docker mode gets the opposing `ShieldCheck`
-  "filesystem and network isolated." copy. Combined with the trust gate
-  (§2), untrusted Local-mode servers are refused at launch regardless.
-- **Remaining**: No macOS `sandbox-exec` wrapper yet — trusted Local
-  servers still run with the user's full FS/network access. Future work.
+### 9. Local Mode No Isolation ✅ shipped on macOS (Linux/Windows pending)
+- **Status (macOS)**: Opt-in `sandbox_local` flag on `McpServerConfig`
+  wraps Local-mode children in `sandbox-exec(1)` with a generated `.sb`
+  profile.
+  - Implementation: [crates/mcp-proxy-cli/src/sandbox.rs](crates/mcp-proxy-cli/src/sandbox.rs)
+    (profile generation + `TempProfile` RAII guard) wired through
+    [crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs)
+    (`build_local_command_macos`).
+  - Profile: `(deny default)` with broad `file-read*` allow + denylist for
+    secret stores (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`,
+    `~/Library/Keychains`, `/etc/master.passwd`, `/etc/sudoers`), writes
+    scoped to `$TMPDIR` + `~/Library/Caches/mcp-proxy/<id>/`, network
+    allowed by default.
+  - UI: Local mode in [src/pages/ServerConfig.tsx](src/pages/ServerConfig.tsx)
+    exposes a "macOS Sandbox" toggle (hidden on non-macOS via
+    `useIsMacos`); the warning copy swaps to the `ShieldCheck`
+    "sandbox-exec enabled" variant when on.
+  - Fallback: if `sandbox-exec` is missing the CLI logs a warning and
+    falls back to direct spawn rather than refusing to launch.
+- **Remaining (other platforms)**: No Linux (bubblewrap / Landlock /
+  seccomp) or Windows (AppContainer / Job Object) wrapper yet — Local
+  mode on those hosts still runs with the user's full FS/network access.
+  Trust gate (§2) is the sole defense outside macOS for now.
 
 ### 10. Docker `--log-driver=none` by Default ✅ shipped
 - **Risk**: Operators who configure non-default Docker log drivers

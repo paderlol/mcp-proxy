@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useServers } from "../hooks/useServers";
 import { useSecrets } from "../hooks/useSecrets";
+import { useIsMacos } from "../hooks/useIsMacos";
 import type { EnvMapping, McpServerConfig } from "../lib/types";
 import type { RegistryEntry } from "../data/registry";
 
@@ -47,6 +48,8 @@ export function ServerConfig() {
   const [dockerImage, setDockerImage] = useState("");
   const [envMappings, setEnvMappings] = useState<EnvMapping[]>([]);
   const [trusted, setTrusted] = useState(false);
+  const [sandboxLocal, setSandboxLocal] = useState(false);
+  const isMacos = useIsMacos();
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [pendingSave, setPendingSave] = useState(false);
@@ -65,6 +68,7 @@ export function ServerConfig() {
     setDockerImage("");
     setEnvMappings([]);
     setTrusted(false);
+    setSandboxLocal(false);
     setPrefillEntry(null);
     setEditingServer(null);
     setShowAdd(false);
@@ -86,6 +90,7 @@ export function ServerConfig() {
     }
     setEnvMappings([...server.env_mappings]);
     setTrusted(server.trusted);
+    setSandboxLocal(server.sandbox_local ?? false);
     setPrefillEntry(null);
     setShowAdd(true);
   };
@@ -105,6 +110,7 @@ export function ServerConfig() {
       })),
     );
     setTrusted(false);
+    setSandboxLocal(false);
     setPrefillEntry(entry);
     setShowAdd(true);
   };
@@ -164,6 +170,7 @@ export function ServerConfig() {
               : { type: "Local" },
           env_mappings: validMappings,
           trusted,
+          sandbox_local: sandboxLocal,
           updated_at: new Date().toISOString(),
         });
       } else {
@@ -176,6 +183,7 @@ export function ServerConfig() {
           dockerImage: dockerImage || undefined,
           envMappings: validMappings,
           trusted,
+          sandboxLocal,
         });
       }
       resetForm();
@@ -498,13 +506,21 @@ export function ServerConfig() {
             </div>
             <p className="text-xs text-text-secondary/60 px-1">
               {runMode === "Local" ? (
-                <>
-                  <ShieldAlert
-                    size={12}
-                    className="inline mr-1 text-warning"
-                  />
-                  Direct process — fast but no isolation.
-                </>
+                sandboxLocal && isMacos ? (
+                  <>
+                    <ShieldCheck size={12} className="inline mr-1 text-brand" />
+                    Direct process — macOS sandbox-exec enabled (filesystem and
+                    network restricted).
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert
+                      size={12}
+                      className="inline mr-1 text-warning"
+                    />
+                    Direct process — fast but no isolation.
+                  </>
+                )
               ) : (
                 <>
                   <ShieldCheck size={12} className="inline mr-1 text-brand" />
@@ -512,6 +528,40 @@ export function ServerConfig() {
                 </>
               )}
             </p>
+            {runMode === "Local" && isMacos && (
+              <div className="mt-3 flex flex-col gap-1.5" data-testid="sandbox-local-toggle">
+                <label className="text-sm text-text-secondary font-bold">
+                  macOS Sandbox
+                </label>
+                <div className="flex gap-2">
+                  <PillButton
+                    variant={!sandboxLocal ? "warning" : "outlined"}
+                    onClick={() => setSandboxLocal(false)}
+                    className="flex-1"
+                  >
+                    <ShieldAlert size={14} className="mr-1.5" />
+                    Off
+                  </PillButton>
+                  <PillButton
+                    variant={sandboxLocal ? "brand" : "outlined"}
+                    onClick={() => setSandboxLocal(true)}
+                    className="flex-1"
+                  >
+                    <ShieldCheck size={14} className="mr-1.5" />
+                    sandbox-exec
+                  </PillButton>
+                </div>
+                <p className="text-xs text-text-secondary/60 px-1">
+                  When enabled, the CLI wraps the child in{" "}
+                  <code className="text-text-bright">sandbox-exec</code> with a
+                  generated <code className="text-text-bright">.sb</code> profile:
+                  writes restricted to per-server cache + <code className="text-text-bright">$TMPDIR</code>,
+                  reads allowed but common secret stores (<code className="text-text-bright">~/.ssh</code>,
+                  Keychain, <code className="text-text-bright">~/.aws</code>) denied.
+                  macOS only — the flag is ignored on other platforms.
+                </p>
+              </div>
+            )}
             {runMode === "DockerSandbox" && (
               <div className="mt-3 flex flex-col gap-1.5">
                 <label className="text-sm text-text-secondary font-bold">

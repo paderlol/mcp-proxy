@@ -43,6 +43,7 @@ export const addServer = (params: {
   dockerImage?: string;
   envMappings?: EnvMapping[];
   trusted?: boolean;
+  sandboxLocal?: boolean;
 }) => invoke<McpServerConfig>("add_server", params);
 export const updateServer = (server: McpServerConfig) =>
   invoke<McpServerConfig>("update_server", { server });

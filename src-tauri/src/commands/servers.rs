@@ -31,6 +31,7 @@ pub async fn add_server(
     docker_image: Option<String>,
     env_mappings: Option<Vec<EnvMapping>>,
     trusted: Option<bool>,
+    sandbox_local: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<McpServerConfig, String> {
     let transport = match transport_type.as_str() {
@@ -57,6 +58,10 @@ pub async fn add_server(
 
     if let Some(trusted) = trusted {
         config.trusted = trusted;
+    }
+
+    if let Some(sandbox_local) = sandbox_local {
+        config.sandbox_local = sandbox_local;
     }
 
     let mut servers = state.servers.lock().map_err(|e| e.to_string())?;
