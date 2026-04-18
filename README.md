@@ -148,6 +148,10 @@ If you genuinely want to run a server as untrusted but with some network access,
 
 The relevant code: trust gate in [crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs), network policy in [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) (`resolve_network_flag`).
 
+### Container logging
+
+Every `docker run` invocation also gets `--log-driver=none` injected by default, so the one-line JSON secret payload written to container stdin cannot be captured by a non-default Docker log driver (`journald`, `fluentd`, `splunk`, `gelf`, …). Docker's default `json-file` driver does not record stdin, so this is defense in depth. If you need container logging, set `--log-driver=...` (or `--log-driver ...`) in the server's `extra_args` and your choice wins.
+
 ## Supported AI clients
 
 | Client | Config format |

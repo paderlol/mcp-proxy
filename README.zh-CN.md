@@ -148,6 +148,10 @@ mcp-proxy/
 
 相关代码：信任关口位于 [crates/mcp-proxy-cli/src/main.rs](crates/mcp-proxy-cli/src/main.rs)，网络策略位于 [crates/mcp-proxy-cli/src/docker.rs](crates/mcp-proxy-cli/src/docker.rs) 中的 `resolve_network_flag`。
 
+### 容器日志
+
+每次 `docker run` 还会默认注入 `--log-driver=none`，避免写入容器 stdin 的那一行 JSON 密钥负载被非默认日志驱动（`journald`、`fluentd`、`splunk`、`gelf` 等）捕获持久化。Docker 默认的 `json-file` 驱动不记录 stdin，所以这是一条深度防御。如果确实需要容器日志，在 Server 的 `extra_args` 里加上 `--log-driver=...`（或 `--log-driver ...`），你的设置会覆盖默认行为。
+
 ## 支持的 AI 客户端
 
 | 客户端 | 配置格式 |
