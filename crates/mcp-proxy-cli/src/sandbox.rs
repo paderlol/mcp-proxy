@@ -62,20 +62,15 @@
 use std::path::{Path, PathBuf};
 
 /// Network posture for a sandboxed Local-mode child.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SandboxNetwork {
     /// Allow outbound connections. This is the default — most MCP servers need
     /// to talk to third-party APIs.
+    #[default]
     Allowed,
     /// Deny all network access. Useful for filesystem-only servers.
     #[allow(dead_code)]
     Blocked,
-}
-
-impl Default for SandboxNetwork {
-    fn default() -> Self {
-        Self::Allowed
-    }
 }
 
 /// Generate the body of a `.sb` sandbox profile.
